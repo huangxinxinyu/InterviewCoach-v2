@@ -3,6 +3,7 @@ package com.xinyu.InterviewCoach_v2.controller;
 import com.xinyu.InterviewCoach_v2.dto.CreateUserRequest;
 import com.xinyu.InterviewCoach_v2.dto.UserDTO;
 import com.xinyu.InterviewCoach_v2.enums.UserRole;
+import com.xinyu.InterviewCoach_v2.service.AuthService;
 import com.xinyu.InterviewCoach_v2.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -23,17 +24,36 @@ public class UserController {
     @Autowired
     private UserService userService;
 
+    @Autowired
+    private AuthService authService;
+
     /**
-     * 创建新用户
-     * 注意：只能创建普通用户，管理员账户需要通过数据库直接初始化
+     * 用户注册（专门的注册接口）
      */
-    @PostMapping
-    public ResponseEntity<?> createUser(@RequestBody CreateUserRequest request) {
+    @PostMapping("/register")
+    public ResponseEntity<?> register(@RequestBody CreateUserRequest request) {
         try {
             UserDTO user = userService.createUser(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(user);
+
+            // 注册成功后自动登录生成token
+            AuthService.LoginResult loginResult = authService.login(
+                    request.getEmail(),
+                    request.getPassword()
+            );
+
+            if (loginResult.isSuccess()) {
+                return ResponseEntity.status(HttpStatus.CREATED).body(new RegisterResponse(
+                        true,
+                        "注册成功",
+                        loginResult.getToken(),
+                        loginResult.getUser()
+                ));
+            } else {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(new ErrorResponse("注册成功但登录失败"));
+            }
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
     }
 
@@ -91,7 +111,7 @@ public class UserController {
             UserDTO user = userService.updateUser(id, request);
             return ResponseEntity.ok(user);
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
     }
 
@@ -103,12 +123,12 @@ public class UserController {
         try {
             boolean deleted = userService.deleteUser(id);
             if (deleted) {
-                return ResponseEntity.ok().build();
+                return ResponseEntity.ok(new SuccessResponse("用户删除成功"));
             } else {
-                return ResponseEntity.badRequest().body("删除用户失败");
+                return ResponseEntity.badRequest().body(new ErrorResponse("删除用户失败"));
             }
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
     }
 
@@ -135,12 +155,33 @@ public class UserController {
      */
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) {
-        Optional<UserDTO> user = userService.authenticate(loginRequest.getEmail(), loginRequest.getPassword());
-        if (user.isPresent()) {
-            return ResponseEntity.ok(user.get());
+        AuthService.LoginResult result = authService.login(
+                loginRequest.getEmail(),
+                loginRequest.getPassword()
+        );
+
+        if (result.isSuccess()) {
+            return ResponseEntity.ok(result);
         } else {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("邮箱或密码错误");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse(result.getMessage()));
         }
+    }
+
+    /**
+     * 验证token
+     */
+    @PostMapping("/validate-token")
+    public ResponseEntity<?> validateToken(@RequestBody TokenRequest tokenRequest) {
+        boolean isValid = authService.validateToken(tokenRequest.getToken());
+        if (isValid) {
+            Optional<UserDTO> user = authService.getUserFromToken(tokenRequest.getToken());
+            if (user.isPresent()) {
+                return ResponseEntity.ok(new TokenValidationResponse(true, "Token有效", user.get()));
+            }
+        }
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new TokenValidationResponse(false, "Token无效或已过期", null));
     }
 
     /**
@@ -166,6 +207,149 @@ public class UserController {
 
         public void setPassword(String password) {
             this.password = password;
+        }
+    }
+
+    /**
+     * Token请求DTO
+     */
+    public static class TokenRequest {
+        private String token;
+
+        public TokenRequest() {}
+
+        public String getToken() {
+            return token;
+        }
+
+        public void setToken(String token) {
+            this.token = token;
+        }
+    }
+
+    /**
+     * Token验证响应DTO
+     */
+    public static class TokenValidationResponse {
+        private boolean valid;
+        private String message;
+        private UserDTO user;
+
+        public TokenValidationResponse(boolean valid, String message, UserDTO user) {
+            this.valid = valid;
+            this.message = message;
+            this.user = user;
+        }
+
+        public boolean isValid() {
+            return valid;
+        }
+
+        public void setValid(boolean valid) {
+            this.valid = valid;
+        }
+
+        public String getMessage() {
+            return message;
+        }
+
+        public void setMessage(String message) {
+            this.message = message;
+        }
+
+        public UserDTO getUser() {
+            return user;
+        }
+
+        public void setUser(UserDTO user) {
+            this.user = user;
+        }
+    }
+
+    /**
+     * 注册响应DTO
+     */
+    public static class RegisterResponse {
+        private boolean success;
+        private String message;
+        private String token;
+        private UserDTO user;
+
+        public RegisterResponse(boolean success, String message, String token, UserDTO user) {
+            this.success = success;
+            this.message = message;
+            this.token = token;
+            this.user = user;
+        }
+
+        public boolean isSuccess() {
+            return success;
+        }
+
+        public void setSuccess(boolean success) {
+            this.success = success;
+        }
+
+        public String getMessage() {
+            return message;
+        }
+
+        public void setMessage(String message) {
+            this.message = message;
+        }
+
+        public String getToken() {
+            return token;
+        }
+
+        public void setToken(String token) {
+            this.token = token;
+        }
+
+        public UserDTO getUser() {
+            return user;
+        }
+
+        public void setUser(UserDTO user) {
+            this.user = user;
+        }
+    }
+
+    /**
+     * 错误响应DTO
+     */
+    public static class ErrorResponse {
+        private String error;
+
+        public ErrorResponse(String error) {
+            this.error = error;
+        }
+
+        public String getError() {
+            return error;
+        }
+
+        public void setError(String error) {
+            this.error = error;
+        }
+    }
+
+    /**
+     * 成功响应DTO
+     */
+    public static class SuccessResponse {
+        private String message;
+
+        public SuccessResponse(String message) {
+            this.message = message;
+        }
+
+        public String getMessage() {
+            return message;
+        }
+
+        public void setMessage(String message) {
+            this.message = message;
         }
     }
 }

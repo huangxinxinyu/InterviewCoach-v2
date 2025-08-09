@@ -19,3 +19,14 @@ mybatis:
   configuration:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+jwt:
+  secret: ${JWT_SECRET:A7f9K2mP8qR5vN3xW6zE1cV4bH7nM0sL9pQ2dF5gY8jU3kI6oT1rA4wZ7eX0cV9b}
+  expiration: 86400000
+
+
+#debug: true
+#logging:
+#  level:
+#    org.springframework: DEBUG
+#    com.xinyu.InterviewCoach_v2: DEBUG
