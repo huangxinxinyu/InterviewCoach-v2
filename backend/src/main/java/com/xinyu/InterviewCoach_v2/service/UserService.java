@@ -5,6 +5,7 @@ import com.xinyu.InterviewCoach_v2.dto.UserDTO;
 import com.xinyu.InterviewCoach_v2.entity.User;
 import com.xinyu.InterviewCoach_v2.enums.UserRole;
 import com.xinyu.InterviewCoach_v2.mapper.UserMapper;
+import com.xinyu.InterviewCoach_v2.util.PasswordUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -21,19 +22,38 @@ public class UserService {
     @Autowired
     private UserMapper userMapper;
 
+    @Autowired
+    private PasswordUtil passwordUtil;
+
     /**
      * 创建新用户
      * 注意：只能创建普通用户(USER角色)，管理员需要通过数据库直接初始化
      */
     public UserDTO createUser(CreateUserRequest request) {
+        // 验证输入参数
+        if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+            throw new RuntimeException("邮箱不能为空");
+        }
+        if (request.getPassword() == null || request.getPassword().trim().isEmpty()) {
+            throw new RuntimeException("密码不能为空");
+        }
+
+        // 检查密码强度
+        if (!passwordUtil.isPasswordStrong(request.getPassword())) {
+            throw new RuntimeException("密码强度不足，密码长度至少6位");
+        }
+
         // 检查邮箱是否已存在
         if (userMapper.existsByEmail(request.getEmail())) {
             throw new RuntimeException("邮箱已存在");
         }
 
         User user = new User();
-        user.setEmail(request.getEmail());
-        user.setPassword(request.getPassword()); // 注意：实际项目中应该加密密码
+        user.setEmail(request.getEmail().trim());
+
+        String encodedPassword = passwordUtil.encodePassword(request.getPassword());
+        user.setPassword(encodedPassword);
+
         user.setRole(UserRole.USER); // 强制设置为USER角色
 
         int result = userMapper.insert(user);
@@ -86,16 +106,27 @@ public class UserService {
             throw new RuntimeException("用户不存在");
         }
 
+        // 验证邮箱
+        if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+            throw new RuntimeException("邮箱不能为空");
+        }
+
         // 如果邮箱有变化，检查新邮箱是否已被其他用户使用
-        if (!existingUser.get().getEmail().equals(request.getEmail())
-                && userMapper.existsByEmail(request.getEmail())) {
+        if (!existingUser.get().getEmail().equals(request.getEmail().trim())
+                && userMapper.existsByEmail(request.getEmail().trim())) {
             throw new RuntimeException("邮箱已被其他用户使用");
         }
 
         User user = existingUser.get();
-        user.setEmail(request.getEmail());
-        if (request.getPassword() != null && !request.getPassword().isEmpty()) {
-            user.setPassword(request.getPassword()); // 注意：实际项目中应该加密密码
+        user.setEmail(request.getEmail().trim());
+
+        if (request.getPassword() != null && !request.getPassword().trim().isEmpty()) {
+            // 检查密码强度
+            if (!passwordUtil.isPasswordStrong(request.getPassword())) {
+                throw new RuntimeException("密码强度不足，密码长度至少6位");
+            }
+            String encodedPassword = passwordUtil.encodePassword(request.getPassword());
+            user.setPassword(encodedPassword);
         }
         // 不允许更改角色，保持原有角色
 
@@ -135,10 +166,19 @@ public class UserService {
      * 用户登录验证
      */
     public Optional<UserDTO> authenticate(String email, String password) {
-        Optional<User> user = userMapper.findByEmail(email);
-        if (user.isPresent() && user.get().getPassword().equals(password)) {
-            // 注意：实际项目中应该使用加密密码比较
-            return Optional.of(convertToDTO(user.get()));
+        if (email == null || email.trim().isEmpty()) {
+            return Optional.empty();
+        }
+        if (password == null || password.trim().isEmpty()) {
+            return Optional.empty();
+        }
+
+        Optional<User> user = userMapper.findByEmail(email.trim());
+        if (user.isPresent()) {
+            // 使用PasswordUtil验证密码
+            if (passwordUtil.matches(password, user.get().getPassword())) {
+                return Optional.of(convertToDTO(user.get()));
+            }
         }
         return Optional.empty();
     }
