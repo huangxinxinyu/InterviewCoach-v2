@@ -72,104 +72,6 @@ public class UserDTO {
         this.updatedAt = updatedAt;
     }
 
-    // factory methods
-
-    /**
-     * 从User实体创建UserDTO（用于查询响应）
-     */
-    public static UserDTO fromEntity(User user) {
-        if (user == null) {
-            return null;
-        }
-        return new UserDTO(
-                user.getId(),
-                user.getEmail(),
-                user.getRole(),
-                user.getCreatedAt(),
-                user.getUpdatedAt()
-        );
-    }
-
-    /**
-     * 创建登录请求DTO
-     */
-    public static UserDTO loginRequest(String email, String password) {
-        return new UserDTO(email, password);
-    }
-
-    /**
-     * 创建注册请求DTO
-     */
-    public static UserDTO registerRequest(String email, String password) {
-        return new UserDTO(email, password);
-    }
-
-    /**
-     * 创建更新请求DTO
-     */
-    public static UserDTO updateRequest(String email, String password) {
-        return new UserDTO(email, password);
-    }
-
-    /**
-     * 创建成功的登录响应
-     */
-    public static UserDTO loginSuccess(String token, User user) {
-        return new UserDTO(
-                true,
-                "登录成功",
-                token,
-                user.getId(),
-                user.getEmail(),
-                user.getRole(),
-                user.getCreatedAt(),
-                user.getUpdatedAt()
-        );
-    }
-
-    /**
-     * 创建失败的登录响应
-     */
-    public static UserDTO loginFailed(String message) {
-        UserDTO dto = new UserDTO();
-        dto.success = false;
-        dto.message = message;
-        return dto;
-    }
-
-    /**
-     * 创建成功的注册响应
-     */
-    public static UserDTO registerSuccess(String token, User user) {
-        return new UserDTO(
-                true,
-                "注册成功",
-                token,
-                user.getId(),
-                user.getEmail(),
-                user.getRole(),
-                user.getCreatedAt(),
-                user.getUpdatedAt()
-        );
-    }
-
-    /**
-     * 创建Token验证响应
-     */
-    public static UserDTO tokenValidation(boolean valid, String message, User user) {
-        UserDTO dto = new UserDTO();
-        dto.success = valid;
-        dto.message = message;
-        if (user != null) {
-            dto.id = user.getId();
-            dto.email = user.getEmail();
-            dto.role = user.getRole();
-            dto.createdAt = user.getCreatedAt();
-            dto.updatedAt = user.getUpdatedAt();
-        }
-        return dto;
-    }
-
     // helper methods
 
     /**
@@ -292,7 +194,6 @@ public class UserDTO {
         this.message = message;
     }
 
-    // ================== Object 方法重写 ==================
 
     @Override
     public String toString() {

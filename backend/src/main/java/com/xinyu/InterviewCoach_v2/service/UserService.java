@@ -38,7 +38,7 @@ public class UserService {
         user.setEmail(request.getEmail());
         // 加密密码
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setRole(UserRole.USER); // 强制设置为USER角色
+        user.setRole(UserRole.USER);
 
         int result = userMapper.insert(user);
         if (result > 0) {
