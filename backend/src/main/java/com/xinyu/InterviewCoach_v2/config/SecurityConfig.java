@@ -81,6 +81,61 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PUT, "/api/questions/*").hasRole("ADMIN")   // 更新题目
                         .requestMatchers(HttpMethod.DELETE, "/api/questions/*").hasRole("ADMIN") // 删除题目
 
+                        // 标签相关 - 只读操作允许认证用户访问
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/tags",                  // 查询所有标签
+                                "/api/tags/*",                // 根据ID查询标签
+                                "/api/tags/name/*",           // 根据名称查询标签
+                                "/api/tags/search",           // 搜索标签
+                                "/api/tags/page",             // 分页查询
+                                "/api/tags/count",            // 获取标签总数
+                                "/api/tags/count/search",     // 根据关键词统计
+                                "/api/tags/exists",           // 检查标签是否存在
+                                "/api/tags/most-used",        // 获取最常用标签
+                                "/api/tags/unused",           // 获取未使用标签
+                                "/api/tags/by-question/*"     // 根据题目ID查询标签
+                        ).authenticated()
+
+                        // 标签相关 - 写操作只允许管理员
+                        .requestMatchers(HttpMethod.POST, "/api/tags").hasRole("ADMIN")         // 创建标签
+                        .requestMatchers(HttpMethod.PUT, "/api/tags/*").hasRole("ADMIN")        // 更新标签
+                        .requestMatchers(HttpMethod.DELETE, "/api/tags/*").hasRole("ADMIN")     // 删除标签
+                        .requestMatchers(HttpMethod.POST, "/api/tags/batch").hasRole("ADMIN")   // 批量创建标签
+
+                        // 题目标签关联 - 只读操作允许认证用户访问
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/question-tags/questions/*/tags",           // 获取题目的标签
+                                "/api/question-tags/tags/*/questions",           // 获取标签的题目
+                                "/api/question-tags/questions/by-tag-name",      // 根据标签名称查询题目
+                                "/api/question-tags/tags/hot",                   // 获取热门标签
+                                "/api/question-tags/tags/orphan",                // 获取孤立标签
+                                "/api/question-tags/questions/untagged",         // 获取无标签题目
+                                "/api/question-tags/questions/*/tags/count",     // 获取题目标签数量
+                                "/api/question-tags/tags/*/questions/count",     // 获取标签题目数量
+                                "/api/question-tags/relations/count",            // 统计关联总数
+                                "/api/question-tags/questions/*/tags/*/exists"   // 检查关联是否存在
+                        ).authenticated()
+
+                        // 题目标签关联 - 写操作只允许管理员
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/question-tags/questions/*/tags/*",         // 添加单个标签
+                                "/api/question-tags/questions/*/tags",           // 批量添加标签
+                                "/api/question-tags/questions/*/tags/by-name",   // 通过名称添加标签
+                                "/api/question-tags/questions/by-all-tags",      // 查询包含所有标签的题目
+                                "/api/question-tags/questions/by-any-tags"       // 查询包含任一标签的题目
+                        ).hasRole("ADMIN")
+
+                        .requestMatchers(HttpMethod.PUT,
+                                "/api/question-tags/questions/*/tags"            // 设置题目标签
+                        ).hasRole("ADMIN")
+
+                        .requestMatchers(HttpMethod.DELETE,
+                                "/api/question-tags/questions/*/tags/*",         // 移除单个标签
+                                "/api/question-tags/questions/*/tags",           // 批量移除标签
+                                "/api/question-tags/questions/*/tags/all",       // 移除所有标签
+                                "/api/question-tags/tags/orphan/cleanup"         // 清理孤立标签
+                        ).hasRole("ADMIN")
+
                         // 用户管理 - 管理员专用端点
                         .requestMatchers(
                                 "/api/users/count",          // 获取用户总数
