@@ -1,7 +1,7 @@
 package com.xinyu.InterviewCoach_v2.controller;
 
-import com.xinyu.InterviewCoach_v2.dto.CreateUserRequest;
 import com.xinyu.InterviewCoach_v2.dto.UserDTO;
+import com.xinyu.InterviewCoach_v2.entity.User;
 import com.xinyu.InterviewCoach_v2.enums.UserRole;
 import com.xinyu.InterviewCoach_v2.service.AuthService;
 import com.xinyu.InterviewCoach_v2.service.UserService;
@@ -31,7 +31,7 @@ public class UserController {
      * 用户注册（专门的注册接口）
      */
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody CreateUserRequest request) {
+    public ResponseEntity<?> register(@RequestBody UserDTO request) {
         try {
             UserDTO user = userService.createUser(request);
 
@@ -106,7 +106,7 @@ public class UserController {
      * 注意：不允许通过API更改用户角色
      */
     @PutMapping("/{id}")
-    public ResponseEntity<?> updateUser(@PathVariable Long id, @RequestBody CreateUserRequest request) {
+    public ResponseEntity<?> updateUser(@PathVariable Long id, @RequestBody UserDTO request) {
         try {
             UserDTO user = userService.updateUser(id, request);
             return ResponseEntity.ok(user);

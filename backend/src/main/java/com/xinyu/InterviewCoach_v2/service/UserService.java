@@ -1,6 +1,5 @@
 package com.xinyu.InterviewCoach_v2.service;
 
-import com.xinyu.InterviewCoach_v2.dto.CreateUserRequest;
 import com.xinyu.InterviewCoach_v2.dto.UserDTO;
 import com.xinyu.InterviewCoach_v2.entity.User;
 import com.xinyu.InterviewCoach_v2.enums.UserRole;
@@ -29,7 +28,7 @@ public class UserService {
      * 创建新用户
      * 注意：只能创建普通用户(USER角色)，管理员需要通过数据库直接初始化
      */
-    public UserDTO createUser(CreateUserRequest request) {
+    public UserDTO createUser(UserDTO request) {
         // 检查邮箱是否已存在
         if (userMapper.existsByEmail(request.getEmail())) {
             throw new RuntimeException("邮箱已存在");
@@ -92,7 +91,7 @@ public class UserService {
      * 更新用户信息
      * 注意：不允许通过API更改用户角色
      */
-    public UserDTO updateUser(Long id, CreateUserRequest request) {
+    public UserDTO updateUser(Long id, UserDTO request) {
         Optional<User> existingUser = userMapper.findById(id);
         if (existingUser.isEmpty()) {
             throw new RuntimeException("用户不存在");
