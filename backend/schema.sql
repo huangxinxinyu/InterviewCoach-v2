@@ -69,8 +69,9 @@ COMMENT = '题目与标签关联表';
 CREATE TABLE IF NOT EXISTS `session` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '会话ID',
   `user_id` BIGINT NOT NULL COMMENT '用户ID',
-  `mode` ENUM('structured_template', 'structured_set', 'single_topic', 'wrong_questions') NOT NULL COMMENT '会话模式',
+  `mode` ENUM('structured_template', 'structured_set', 'single_topic') NOT NULL COMMENT '会话模式',
   `expected_question_count` INTEGER NULL COMMENT '期望的题目数量',
+  `asked_question_count` INTEGER NULL COMMENT 'AI已经提问的题目数量',
   `completed_question_count` INTEGER NULL COMMENT '用户已经回答的题目数量',
   `started_at` DATETIME NOT NULL COMMENT '会话开始时间',
   `ended_at` DATETIME NULL COMMENT '会话结束时间',
@@ -85,28 +86,45 @@ CREATE TABLE IF NOT EXISTS `session` (
 ENGINE = InnoDB
 COMMENT = '会话表';
 
+-- -----------------------------------------------------
+-- Table `message`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `message` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '消息ID',
+  `session_id` BIGINT NOT NULL COMMENT '会话ID',
+  `type` ENUM('ai', 'user') NOT NULL COMMENT '消息类型',
+  `text` TEXT NOT NULL COMMENT '消息内容',
+  `created_at` DATETIME NOT NULL COMMENT '消息创建时间',
+  PRIMARY KEY (`id`),
+  INDEX `idx_message_session` (`session_id` ASC) VISIBLE,
+  CONSTRAINT `fk_message_session`
+    FOREIGN KEY (`session_id`)
+    REFERENCES `session` (`id`)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE)
+ENGINE = InnoDB
+COMMENT = '会话消息表';
 
--- -----------------------------------------------------
--- Table `wrong_question`
--- -----------------------------------------------------
-CREATE TABLE IF NOT EXISTS `wrong_question` (
+
+CREATE TABLE IF NOT EXISTS `user_attempt` (
   `user_id` BIGINT NOT NULL COMMENT '用户ID',
   `question_id` BIGINT NOT NULL COMMENT '题目ID',
-  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录时间',
+  `attempt_number` INTEGER NOT NULL DEFAULT 1 COMMENT '尝试次数',
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`user_id`, `question_id`),
-  INDEX `idx_wq_question_id` (`question_id` ASC) VISIBLE,
-  CONSTRAINT `fk_wq_user`
+  INDEX `idx_question_id` (`question_id` ASC) VISIBLE,
+  CONSTRAINT `fk_user_attempt_user`
     FOREIGN KEY (`user_id`)
     REFERENCES `user` (`id`)
     ON DELETE CASCADE
     ON UPDATE CASCADE,
-  CONSTRAINT `fk_wq_question`
+  CONSTRAINT `fk_user_attempt_question`
     FOREIGN KEY (`question_id`)
     REFERENCES `question` (`id`)
     ON DELETE CASCADE
     ON UPDATE CASCADE)
 ENGINE = InnoDB
-COMMENT = '错题记录表';
+COMMENT = '用户题目尝试次数表';
 
 
 -- -----------------------------------------------------
@@ -168,25 +186,6 @@ ENGINE = InnoDB
 COMMENT = '用户收藏题集表';
 
 
--- -----------------------------------------------------
--- Table `message`
--- -----------------------------------------------------
-CREATE TABLE IF NOT EXISTS `message` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '消息ID',
-  `session_id` BIGINT NOT NULL COMMENT '会话ID',
-  `type` ENUM('ai', 'user') NOT NULL COMMENT '消息类型',
-  `text` TEXT NOT NULL COMMENT '消息内容',
-  `created_at` DATETIME NOT NULL COMMENT '消息创建时间',
-  PRIMARY KEY (`id`),
-  INDEX `idx_message_session` (`session_id` ASC) VISIBLE,
-  CONSTRAINT `fk_message_session`
-    FOREIGN KEY (`session_id`)
-    REFERENCES `session` (`id`)
-    ON DELETE CASCADE
-    ON UPDATE CASCADE)
-ENGINE = InnoDB
-COMMENT = '会话消息表';
-
 
 -- -----------------------------------------------------
 -- Table `template`
@@ -202,22 +201,3 @@ CREATE TABLE IF NOT EXISTS `template` (
 ENGINE = InnoDB
 COMMENT = '模板表';
 
-CREATE TABLE IF NOT EXISTS `user_attempt` (
-  `user_id` BIGINT NOT NULL COMMENT '用户ID',
-  `question_id` BIGINT NOT NULL COMMENT '题目ID',
-  `attempt_number` INTEGER NOT NULL DEFAULT 1 COMMENT '尝试次数',
-  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (`user_id`, `question_id`),
-  INDEX `idx_question_id` (`question_id` ASC) VISIBLE,
-  CONSTRAINT `fk_user_attempt_user`
-    FOREIGN KEY (`user_id`)
-    REFERENCES `user` (`id`)
-    ON DELETE CASCADE
-    ON UPDATE CASCADE,
-  CONSTRAINT `fk_user_attempt_question`
-    FOREIGN KEY (`question_id`)
-    REFERENCES `question` (`id`)
-    ON DELETE CASCADE
-    ON UPDATE CASCADE)
-ENGINE = InnoDB
-COMMENT = '用户题目尝试次数表';

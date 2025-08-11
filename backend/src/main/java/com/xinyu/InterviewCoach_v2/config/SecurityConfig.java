@@ -59,7 +59,7 @@ public class SecurityConfig {
                                 "/api/users/login",           // 登录接口
                                 "/api/users/register",        // 注册接口
                                 "/api/users/check-email/**",  // 检查邮箱是否存在
-                                "/api/users/validate-token",  // Token验证（可选择是否公开）
+                                "/api/users/validate-token",  // Token验证
                                 "/error"                      // 错误页面
                         ).permitAll()
 
@@ -135,6 +135,9 @@ public class SecurityConfig {
                                 "/api/question-tags/questions/*/tags/all",       // 移除所有标签
                                 "/api/question-tags/tags/orphan/cleanup"         // 清理孤立标签
                         ).hasRole("ADMIN")
+
+                        // 聊天和面试相关 - 需要认证
+                        .requestMatchers("/api/chat/**").authenticated()
 
                         // 用户管理 - 管理员专用端点
                         .requestMatchers(
