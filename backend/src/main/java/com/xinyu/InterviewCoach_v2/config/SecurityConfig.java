@@ -136,6 +136,26 @@ public class SecurityConfig {
                                 "/api/question-tags/tags/orphan/cleanup"         // 清理孤立标签
                         ).hasRole("ADMIN")
 
+                        // 题集相关 - 只读操作允许认证用户访问
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/question-sets",                 // 查询所有题集
+                                "/api/question-sets/*",               // 根据ID查询题集
+                                "/api/question-sets/*/question-ids",  // 获取题集的题目ID列表
+                                "/api/question-sets/collections"      // 获取用户收藏的题集
+                        ).authenticated()
+
+                        // 题集相关 - 用户可以收藏/取消收藏
+                        .requestMatchers(HttpMethod.POST, "/api/question-sets/*/collect").authenticated()   // 收藏题集
+                        .requestMatchers(HttpMethod.DELETE, "/api/question-sets/*/collect").authenticated() // 取消收藏题集
+
+                        // 题集相关 - 写操作只允许管理员
+                        .requestMatchers(HttpMethod.POST, "/api/question-sets").hasRole("ADMIN")            // 创建题集
+                        .requestMatchers(HttpMethod.PUT, "/api/question-sets/*").hasRole("ADMIN")           // 更新题集
+                        .requestMatchers(HttpMethod.DELETE, "/api/question-sets/*").hasRole("ADMIN")        // 删除题集
+                        .requestMatchers(HttpMethod.POST, "/api/question-sets/*/questions").hasRole("ADMIN") // 向题集添加题目
+                        .requestMatchers(HttpMethod.PUT, "/api/question-sets/*/questions").hasRole("ADMIN")  // 设置题集内容
+                        .requestMatchers(HttpMethod.DELETE, "/api/question-sets/*/questions/*").hasRole("ADMIN") // 从题集移除题目
+
                         // 聊天和面试相关 - 需要认证
                         .requestMatchers("/api/chat/**").authenticated()
 
