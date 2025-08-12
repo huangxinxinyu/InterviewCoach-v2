@@ -42,6 +42,9 @@ public class ChatService {
     @Autowired
     private SessionService sessionService;
 
+    @Autowired
+    private QuestionSetService questionSetService;
+
     @Value("${openai.api.key}")
     private String openAiApiKey;
 
@@ -52,6 +55,9 @@ public class ChatService {
     private String openAiModel;
 
     private final RestTemplate restTemplate = new RestTemplate();
+
+    // 为 structured_set 模式存储题目队列
+    private final Map<Long, List<Long>> sessionQuestionQueues = new HashMap<>();
 
     /**
      * 启动新的面试会话
@@ -71,6 +77,11 @@ public class ChatService {
                     request.getMode(),
                     request.getExpectedQuestionCount()
             );
+
+            // 为 structured_set 模式初始化题目队列
+            if (request.getMode() == SessionMode.STRUCTURED_SET) {
+                initQuestionQueue(session.getId(), request.getQuestionIds());
+            }
 
             // 发送开场白和第一题
             String firstQuestion = generateFirstQuestion(session.getId(), request);
@@ -151,6 +162,9 @@ public class ChatService {
             // 结束会话
             sessionService.endSession(sessionId);
 
+            // 清理题目队列
+            sessionQuestionQueues.remove(sessionId);
+
             return new ChatResponse(
                     true,
                     aiMessage,
@@ -160,6 +174,17 @@ public class ChatService {
 
         } catch (Exception e) {
             return new ChatResponse(false, "结束会话失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 为 structured_set 模式初始化题目队列
+     */
+    private void initQuestionQueue(Long sessionId, List<Long> questionIds) {
+        if (questionIds != null && !questionIds.isEmpty()) {
+            // 创建题目队列的副本，避免修改原始列表
+            List<Long> queue = new ArrayList<>(questionIds);
+            sessionQuestionQueues.put(sessionId, queue);
         }
     }
 
@@ -234,6 +259,9 @@ public class ChatService {
             // 结束会话
             sessionService.endSession(sessionId);
 
+            // 清理题目队列
+            sessionQuestionQueues.remove(sessionId);
+
             return new ChatResponse(
                     true,
                     aiMessage,
@@ -287,12 +315,26 @@ public class ChatService {
             case SINGLE_TOPIC:
                 return selectQuestionByTag(userId, request.getTagId());
             case STRUCTURED_SET:
-                return selectQuestionFromSet(request.getQuestionIds());
+                return selectQuestionFromQueue(sessionId);
             case STRUCTURED_TEMPLATE:
                 return selectQuestionByTemplate(userId);
             default:
                 return null;
         }
+    }
+
+    /**
+     * 从题目队列中选择题目（structured_set模式）
+     */
+    private Question selectQuestionFromQueue(Long sessionId) {
+        List<Long> queue = sessionQuestionQueues.get(sessionId);
+        if (queue == null || queue.isEmpty()) {
+            return null;
+        }
+
+        // 从队列头部取出一个题目ID
+        Long questionId = queue.remove(0);
+        return questionMapper.findById(questionId).orElse(null);
     }
 
     /**
@@ -319,7 +361,7 @@ public class ChatService {
     }
 
     /**
-     * 从题集中选择题目
+     * 从题集中选择题目（废弃的方法，现在使用队列）
      */
     private Question selectQuestionFromSet(List<Long> questionIds) {
         if (questionIds == null || questionIds.isEmpty()) {
@@ -354,6 +396,20 @@ public class ChatService {
     private String buildFirstQuestionPrompt(SessionMode mode, Question question) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("你是一个专业的面试官，正在进行技术面试。");
+
+        // 根据模式添加不同的背景描述
+        switch (mode) {
+            case SINGLE_TOPIC:
+                prompt.append("本次面试将围绕特定主题进行。");
+                break;
+            case STRUCTURED_SET:
+                prompt.append("本次面试将按照预设的题目顺序进行。");
+                break;
+            case STRUCTURED_TEMPLATE:
+                prompt.append("本次面试将根据结构化模板进行。");
+                break;
+        }
+
         prompt.append("请根据以下题目向候选人提问：\n\n");
         prompt.append("题目：").append(question.getText()).append("\n\n");
         prompt.append("请以自然、友好的语气提出这个问题，并可以适当补充一些背景信息。");
@@ -368,13 +424,18 @@ public class ChatService {
         // 获取下一个题目
         Question nextQuestion = getNextQuestion(sessionId);
 
+        if (nextQuestion == null) {
+            // 如果没有下一题，说明题目已经用完，提前结束面试
+            return generateFinalEvaluation(sessionId, userAnswer);
+        }
+
         String prompt = String.format(
                 "作为面试官，请对候选人的回答进行简短评价，然后提出下一个问题。\n\n" +
                         "候选人回答：%s\n\n" +
                         "下一个问题：%s\n\n" +
                         "请先给出简短的反馈（2-3句话），然后自然地引入下一个问题。",
                 userAnswer,
-                nextQuestion != null ? nextQuestion.getText() : "暂无更多题目"
+                nextQuestion.getText()
         );
 
         return callOpenAI(prompt);
@@ -396,12 +457,19 @@ public class ChatService {
             case SINGLE_TOPIC:
                 return getNextQuestionByTag(session);
             case STRUCTURED_SET:
-                return getNextQuestionFromSet(session);
+                return getNextQuestionFromQueue(sessionId);
             case STRUCTURED_TEMPLATE:
                 return getNextQuestionByTemplate(session);
             default:
                 return null;
         }
+    }
+
+    /**
+     * 从队列获取下一题（structured_set模式）
+     */
+    private Question getNextQuestionFromQueue(Long sessionId) {
+        return selectQuestionFromQueue(sessionId);
     }
 
     /**
@@ -414,7 +482,7 @@ public class ChatService {
     }
 
     /**
-     * 从题集获取下一题
+     * 从题集获取下一题（废弃的方法）
      */
     private Question getNextQuestionFromSet(Session session) {
         // 简化实现：根据已提问数量获取题集中的下一题
@@ -545,6 +613,10 @@ public class ChatService {
             case STRUCTURED_SET:
                 if (request.getQuestionIds() == null || request.getQuestionIds().isEmpty()) {
                     throw new IllegalArgumentException("结构化题集模式需要指定题目ID列表");
+                }
+                // 验证题目数量是否与期望的题目数量匹配
+                if (request.getQuestionIds().size() < request.getExpectedQuestionCount()) {
+                    throw new IllegalArgumentException("题集中的题目数量不足，至少需要 " + request.getExpectedQuestionCount() + " 道题目");
                 }
                 break;
         }
