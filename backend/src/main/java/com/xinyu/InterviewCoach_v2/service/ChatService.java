@@ -71,16 +71,20 @@ public class ChatService {
             // 结束用户所有活跃会话
             sessionService.endAllActiveSessionsByUserId(userId);
 
+            // 获取实际的题目数量
+            Integer actualQuestionCount = getActualQuestionCount(request);
+
             // 创建新会话
             SessionDTO session = sessionService.createSession(
                     userId,
                     request.getMode(),
-                    request.getExpectedQuestionCount()
+                    actualQuestionCount
             );
 
             // 为 structured_set 模式初始化题目队列
             if (request.getMode() == SessionMode.STRUCTURED_SET) {
-                initQuestionQueue(session.getId(), request.getQuestionIds());
+                List<Long> questionIds = getQuestionIdsForStructuredSet(request);
+                initQuestionQueue(session.getId(), questionIds);
             }
 
             // 发送开场白和第一题
@@ -101,6 +105,31 @@ public class ChatService {
             return new SessionResponse(false, "启动面试失败: " + e.getMessage());
         }
     }
+
+    /**
+     * 获取实际的题目数量
+     */
+    private Integer getActualQuestionCount(StartSessionRequest request) {
+        switch (request.getMode()) {
+            case STRUCTURED_SET:
+                // 对于题集模式，使用题集中的实际题目数量
+                if (request.getQuestionSetId() != null) {
+                    List<Long> questionIds = questionSetService.getQuestionIdsBySetId(request.getQuestionSetId());
+                    return questionIds.size();
+                } else if (request.getQuestionIds() != null) {
+                    return request.getQuestionIds().size();
+                } else {
+                    throw new IllegalArgumentException("结构化题集模式需要指定题集ID或题目ID列表");
+                }
+            case SINGLE_TOPIC:
+            case STRUCTURED_TEMPLATE:
+                // 其他模式使用用户指定的数量
+                return request.getExpectedQuestionCount();
+            default:
+                throw new IllegalArgumentException("不支持的会话模式");
+        }
+    }
+
 
     /**
      * 处理用户消息并生成AI回复
@@ -296,6 +325,7 @@ public class ChatService {
         }
 
         String prompt = buildFirstQuestionPrompt(request.getMode(), selectedQuestion);
+        System.out.println(prompt);
         return callOpenAI(prompt);
     }
 
@@ -593,6 +623,30 @@ public class ChatService {
     }
 
     /**
+     * 获取结构化题集模式的题目ID列表
+     */
+    private List<Long> getQuestionIdsForStructuredSet(StartSessionRequest request) {
+        List<Long> questionIds;
+
+        // 优先使用 questionSetId
+        if (request.getQuestionSetId() != null) {
+            questionIds = questionSetService.getQuestionIdsBySetId(request.getQuestionSetId());
+            if (questionIds.isEmpty()) {
+                throw new IllegalArgumentException("题集ID " + request.getQuestionSetId() + " 中没有题目");
+            }
+        }
+        // 如果没有 questionSetId，使用直接提供的 questionIds（向后兼容）
+        else if (request.getQuestionIds() != null && !request.getQuestionIds().isEmpty()) {
+            questionIds = request.getQuestionIds();
+        }
+        else {
+            throw new IllegalArgumentException("结构化题集模式需要指定题集ID或题目ID列表");
+        }
+
+        return questionIds;
+    }
+
+    /**
      * 验证启动会话请求
      */
     private void validateStartSessionRequest(StartSessionRequest request) {
@@ -600,24 +654,29 @@ public class ChatService {
             throw new IllegalArgumentException("会话模式不能为空");
         }
 
-        if (request.getExpectedQuestionCount() == null || request.getExpectedQuestionCount() < 1 || request.getExpectedQuestionCount() > 10) {
-            throw new IllegalArgumentException("期望题目数量必须在1-10之间");
-        }
-
         switch (request.getMode()) {
             case SINGLE_TOPIC:
                 if (request.getTagId() == null) {
                     throw new IllegalArgumentException("单主题模式需要指定标签ID");
                 }
+                if (request.getExpectedQuestionCount() == null || request.getExpectedQuestionCount() < 1 || request.getExpectedQuestionCount() > 10) {
+                    throw new IllegalArgumentException("单主题模式的期望题目数量必须在1-10之间");
+                }
                 break;
+
+            case STRUCTURED_TEMPLATE:
+                if (request.getExpectedQuestionCount() == null || request.getExpectedQuestionCount() < 1 || request.getExpectedQuestionCount() > 10) {
+                    throw new IllegalArgumentException("结构化模板模式的期望题目数量必须在1-10之间");
+                }
+                break;
+
             case STRUCTURED_SET:
-                if (request.getQuestionIds() == null || request.getQuestionIds().isEmpty()) {
-                    throw new IllegalArgumentException("结构化题集模式需要指定题目ID列表");
+                // 必须提供 questionSetId 或 questionIds 其中之一
+                if (request.getQuestionSetId() == null &&
+                        (request.getQuestionIds() == null || request.getQuestionIds().isEmpty())) {
+                    throw new IllegalArgumentException("结构化题集模式需要指定题集ID或题目ID列表");
                 }
-                // 验证题目数量是否与期望的题目数量匹配
-                if (request.getQuestionIds().size() < request.getExpectedQuestionCount()) {
-                    throw new IllegalArgumentException("题集中的题目数量不足，至少需要 " + request.getExpectedQuestionCount() + " 道题目");
-                }
+                // STRUCTURED_SET 模式不需要验证 expectedQuestionCount，因为使用题集的实际题目数量
                 break;
         }
     }
