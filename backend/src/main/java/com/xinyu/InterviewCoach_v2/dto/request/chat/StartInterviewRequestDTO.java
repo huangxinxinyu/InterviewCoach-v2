@@ -8,15 +8,14 @@ import jakarta.validation.constraints.Max;
 import java.util.List;
 
 /**
- * 开始面试请求DTO - 修改版本
- * structured_set 模式不需要 expectedQuestionCount，使用题集中的题目数量
+ * 开始面试请求DTO - 添加模板支持
  */
 public class StartInterviewRequestDTO {
 
     @NotNull(message = "会话模式不能为空")
     private SessionMode mode;
 
-    // 对于 structured_set 模式，此字段可为空，将自动使用题集中的题目数量
+    // 对于 structured_template 和 structured_set 模式，此字段可为空，将自动计算
     // 对于其他模式，此字段必填
     @Min(value = 1, message = "期望题目数量至少为1")
     @Max(value = 10, message = "期望题目数量最多为10")
@@ -24,7 +23,8 @@ public class StartInterviewRequestDTO {
 
     private Long tagId; // 用于单主题模式
     private List<Long> questionIds; // 用于结构化题集模式
-    private Long questionSetId; // 新增：用于结构化题集模式（替代 questionIds）
+    private Long questionSetId; // 用于结构化题集模式（替代 questionIds）
+    private Long templateId; // 用于结构化模板模式
 
     public StartInterviewRequestDTO() {}
 
@@ -43,6 +43,12 @@ public class StartInterviewRequestDTO {
     public StartInterviewRequestDTO(SessionMode mode, Long questionSetId) {
         this.mode = mode;
         this.questionSetId = questionSetId;
+    }
+
+    // 用于 structured_template 模式的构造方法
+    public StartInterviewRequestDTO(SessionMode mode, Long templateId, boolean isTemplate) {
+        this.mode = mode;
+        this.templateId = templateId;
     }
 
     // 兼容原有的构造方法
@@ -65,14 +71,21 @@ public class StartInterviewRequestDTO {
                 return tagId != null && expectedQuestionCount != null;
             case STRUCTURED_SET:
                 // structured_set 模式可以使用 questionSetId 或 questionIds
-                // expectedQuestionCount 对于此模式是可选的
                 return questionSetId != null ||
                         (questionIds != null && !questionIds.isEmpty());
             case STRUCTURED_TEMPLATE:
-                return expectedQuestionCount != null;
+                // structured_template 模式只需要 templateId
+                return templateId != null;
             default:
-                return false;
+                return expectedQuestionCount != null;
         }
+    }
+
+    /**
+     * 检查是否为模板模式
+     */
+    public boolean isTemplateMode() {
+        return mode == SessionMode.STRUCTURED_TEMPLATE && templateId != null;
     }
 
     /**
@@ -131,6 +144,14 @@ public class StartInterviewRequestDTO {
         this.questionSetId = questionSetId;
     }
 
+    public Long getTemplateId() {
+        return templateId;
+    }
+
+    public void setTemplateId(Long templateId) {
+        this.templateId = templateId;
+    }
+
     @Override
     public String toString() {
         return "StartInterviewRequestDTO{" +
@@ -139,6 +160,7 @@ public class StartInterviewRequestDTO {
                 ", tagId=" + tagId +
                 ", questionIds=" + questionIds +
                 ", questionSetId=" + questionSetId +
+                ", templateId=" + templateId +
                 '}';
     }
 }

@@ -1,9 +1,6 @@
 package com.xinyu.InterviewCoach_v2.util;
 
-import com.xinyu.InterviewCoach_v2.dto.QuestionDTO;
-import com.xinyu.InterviewCoach_v2.dto.QuestionSetDTO;
-import com.xinyu.InterviewCoach_v2.dto.TagDTO;
-import com.xinyu.InterviewCoach_v2.dto.UserDTO;
+import com.xinyu.InterviewCoach_v2.dto.*;
 import com.xinyu.InterviewCoach_v2.dto.core.*;
 import com.xinyu.InterviewCoach_v2.entity.*;
 import org.springframework.stereotype.Component;
@@ -233,6 +230,19 @@ public class DTOConverter {
         Tag tag = new Tag();
         tag.setName(tagDTO.getName());
         return tag;
+    }
+
+    /**
+     * 将Template实体转换为TemplateDTO
+     */
+    public TemplateDTO convertToTemplateDTO(Template template) {
+        return new TemplateDTO(
+                template.getId(),
+                template.getName(),
+                template.getContent(),
+                template.getCreatedAt(),
+                template.getUpdatedAt()
+        );
     }
 
 

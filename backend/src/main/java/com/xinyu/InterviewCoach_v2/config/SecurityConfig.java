@@ -159,6 +159,26 @@ public class SecurityConfig {
                         // 聊天和面试相关 - 需要认证
                         .requestMatchers("/api/chat/**").authenticated()
 
+
+                        // 模板相关 - 只读操作允许认证用户访问
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/templates",                 // 查询所有模板
+                                "/api/templates/*",               // 根据ID查询模板
+                                "/api/templates/*/parsed",        // 获取解析后的模板
+                                "/api/templates/name/*",          // 根据名称查询模板
+                                "/api/templates/search",          // 搜索模板
+                                "/api/templates/page",            // 分页查询
+                                "/api/templates/count",           // 获取模板总数
+                                "/api/templates/count/search",    // 根据关键词统计
+                                "/api/templates/exists",          // 检查模板是否存在
+                                "/api/templates/latest"           // 获取最新模板
+                        ).authenticated()
+
+                        // 模板相关 - 写操作只允许管理员
+                        .requestMatchers(HttpMethod.POST, "/api/templates").hasRole("ADMIN")            // 创建模板
+                        .requestMatchers(HttpMethod.PUT, "/api/templates/*").hasRole("ADMIN")           // 更新模板
+                        .requestMatchers(HttpMethod.DELETE, "/api/templates/*").hasRole("ADMIN")        // 删除模板
+
                         // 用户管理 - 管理员专用端点
                         .requestMatchers(
                                 "/api/users/count",          // 获取用户总数

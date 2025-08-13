@@ -1,5 +1,6 @@
 package com.xinyu.InterviewCoach_v2.service;
 
+import com.xinyu.InterviewCoach_v2.dto.TemplateDTO;
 import com.xinyu.InterviewCoach_v2.dto.core.MessageDTO;
 import com.xinyu.InterviewCoach_v2.dto.core.SessionDTO;
 import com.xinyu.InterviewCoach_v2.dto.request.chat.SendMessageRequestDTO;
@@ -12,10 +13,7 @@ import com.xinyu.InterviewCoach_v2.entity.Session;
 import com.xinyu.InterviewCoach_v2.enums.InterviewState;
 import com.xinyu.InterviewCoach_v2.enums.MessageType;
 import com.xinyu.InterviewCoach_v2.enums.SessionMode;
-import com.xinyu.InterviewCoach_v2.mapper.MessageMapper;
-import com.xinyu.InterviewCoach_v2.mapper.QuestionMapper;
-import com.xinyu.InterviewCoach_v2.mapper.SessionMapper;
-import com.xinyu.InterviewCoach_v2.mapper.UserAttemptMapper;
+import com.xinyu.InterviewCoach_v2.mapper.*;
 import com.xinyu.InterviewCoach_v2.util.DTOConverter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,10 +41,16 @@ public class ChatService {
     private QuestionMapper questionMapper;
 
     @Autowired
+    private QuestionTagMapper questionTagMapper;
+
+    @Autowired
     private UserAttemptMapper userAttemptMapper;
 
     @Autowired
     private SessionService sessionService;
+
+    @Autowired
+    private TemplateService templateService;
 
     @Autowired
     private DTOConverter dtoConverter;
@@ -84,9 +88,11 @@ public class ChatService {
             // 结束用户所有活跃会话
             sessionService.endAllActiveSessionsByUserId(userId);
 
-            // 为structured_set模式处理题目数量
+            // 为不同模式处理题目数量和题目列表
             if (request.getMode() == SessionMode.STRUCTURED_SET) {
                 handleStructuredSetMode(request);
+            } else if (request.getMode() == SessionMode.STRUCTURED_TEMPLATE) {
+                handleStructuredTemplateMode(request);
             }
 
             // 创建新会话
@@ -96,9 +102,11 @@ public class ChatService {
                     request.getExpectedQuestionCount()
             );
 
-            // 为 structured_set 模式初始化题目队列
+            // 为不同模式初始化题目队列
             if (request.getMode() == SessionMode.STRUCTURED_SET) {
                 initQuestionQueue(session.getId(), request.getQuestionIds());
+            } else if (request.getMode() == SessionMode.STRUCTURED_TEMPLATE) {
+                initTemplateQuestionQueue(session.getId(), request.getTemplateId(), userId);
             }
 
             // 发送开场白和第一题
@@ -225,6 +233,32 @@ public class ChatService {
     }
 
     /**
+     * 为模板模式初始化题目队列
+     */
+    private void initTemplateQuestionQueue(Long sessionId, Long templateId, Long userId) {
+        try {
+            TemplateDTO template = templateService.parseTemplateContent(templateId);
+            List<Long> selectedQuestionIds = new ArrayList<>();
+
+            // 按照模板的每个章节选择题目
+            for (TemplateDTO.TemplateSection section : template.getSections()) {
+                List<Long> sectionQuestionIds = selectQuestionsForSection(section, userId);
+                selectedQuestionIds.addAll(sectionQuestionIds);
+            }
+
+            if (selectedQuestionIds.isEmpty()) {
+                throw new RuntimeException("模板中没有找到合适的题目");
+            }
+
+            // 将题目ID列表放入队列
+            sessionQuestionQueues.put(sessionId, new ArrayList<>(selectedQuestionIds));
+
+        } catch (Exception e) {
+            throw new RuntimeException("初始化模板题目队列失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 基于消息时序推断当前面试状态
      */
     private InterviewState inferInterviewState(Long sessionId) {
@@ -330,7 +364,7 @@ public class ChatService {
     }
 
     /**
-     * 选择题目的策略
+     * 选择题目的策略 - 修改版本支持模板
      */
     private Question selectQuestion(Long sessionId, StartInterviewRequestDTO request) {
         Optional<Session> sessionOpt = sessionMapper.findById(sessionId);
@@ -347,9 +381,9 @@ public class ChatService {
             case STRUCTURED_SET:
                 return selectQuestionFromQueue(sessionId);
             case STRUCTURED_TEMPLATE:
-                return selectQuestionByTemplate(userId);
+                return selectQuestionFromQueue(sessionId); // 模板模式也使用队列
             default:
-                return null;
+                return selectQuestionByTemplate(userId);
         }
     }
 
@@ -452,7 +486,56 @@ public class ChatService {
     }
 
     /**
-     * 获取下一个题目
+     * 为模板的一个章节选择题目
+     */
+    private List<Long> selectQuestionsForSection(TemplateDTO.TemplateSection section, Long userId) {
+        List<Long> selectedQuestionIds = new ArrayList<>();
+        int neededCount = section.getQuestionCount();
+
+        // 为该章节的每个标签收集题目
+        List<Question> candidateQuestions = new ArrayList<>();
+        for (Long tagId : section.getTagIds()) {
+            // 优先选择用户未尝试过的题目
+            List<Question> untriedQuestions = userAttemptMapper.findUntriedQuestionsByTagId(userId, tagId);
+            candidateQuestions.addAll(untriedQuestions);
+
+            // 如果未尝试的题目不够，添加尝试次数较少的题目
+            if (candidateQuestions.size() < neededCount) {
+                List<Question> leastAttempted = userAttemptMapper.findLeastAttemptedQuestionsByTagId(userId, tagId, neededCount * 2);
+                for (Question q : leastAttempted) {
+                    if (!candidateQuestions.stream().anyMatch(existing -> existing.getId().equals(q.getId()))) {
+                        candidateQuestions.add(q);
+                    }
+                }
+            }
+        }
+
+        // 如果还是不够题目，从所有相关标签中随机选择
+        if (candidateQuestions.size() < neededCount) {
+            for (Long tagId : section.getTagIds()) {
+                List<Question> allTagQuestions = questionTagMapper.findQuestionsByTagId(tagId);
+                for (Question q : allTagQuestions) {
+                    if (!candidateQuestions.stream().anyMatch(existing -> existing.getId().equals(q.getId()))) {
+                        candidateQuestions.add(q);
+                    }
+                    if (candidateQuestions.size() >= neededCount) break;
+                }
+                if (candidateQuestions.size() >= neededCount) break;
+            }
+        }
+
+        // 随机选择所需数量的题目
+        Collections.shuffle(candidateQuestions);
+        int actualCount = Math.min(neededCount, candidateQuestions.size());
+        for (int i = 0; i < actualCount; i++) {
+            selectedQuestionIds.add(candidateQuestions.get(i).getId());
+        }
+
+        return selectedQuestionIds;
+    }
+
+    /**
+     * 获取下一个题目 - 修改版本支持模板
      */
     private Question getNextQuestion(Long sessionId) {
         Optional<Session> sessionOpt = sessionMapper.findById(sessionId);
@@ -468,9 +551,9 @@ public class ChatService {
             case STRUCTURED_SET:
                 return getNextQuestionFromQueue(sessionId);
             case STRUCTURED_TEMPLATE:
-                return getNextQuestionByTemplate(session);
+                return getNextQuestionFromQueue(sessionId); // 模板模式也使用队列
             default:
-                return null;
+                return getNextQuestionByTemplate(session);
         }
     }
 
@@ -496,6 +579,29 @@ public class ChatService {
         // 验证题目数量不能超过限制
         if (request.getExpectedQuestionCount() > 20) {
             throw new RuntimeException("题目数量不能超过20个");
+        }
+    }
+
+    /**
+     * 处理structured_template模式的特殊逻辑
+     */
+    private void handleStructuredTemplateMode(StartInterviewRequestDTO request) {
+        if (request.getTemplateId() == null) {
+            throw new RuntimeException("structured_template模式必须提供templateId");
+        }
+
+        // 解析模板获取题目数量
+        TemplateDTO template = templateService.parseTemplateContent(request.getTemplateId());
+        if (template.getTotalQuestionCount() == null || template.getTotalQuestionCount() <= 0) {
+            throw new RuntimeException("模板中没有有效的题目配置");
+        }
+
+        // 设置期望题目数量
+        request.setExpectedQuestionCount(template.getTotalQuestionCount());
+
+        // 验证题目数量不能超过限制
+        if (request.getExpectedQuestionCount() > 20) {
+            throw new RuntimeException("模板题目数量不能超过20个");
         }
     }
 
