@@ -3,15 +3,16 @@ package com.xinyu.InterviewCoach_v2.service;
 import com.xinyu.InterviewCoach_v2.dto.TagDTO;
 import com.xinyu.InterviewCoach_v2.entity.Tag;
 import com.xinyu.InterviewCoach_v2.mapper.TagMapper;
+import com.xinyu.InterviewCoach_v2.util.DTOConverter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
- * 标签业务逻辑层
+ * 标签业务逻辑层 - 改进后使用DTOConverter
  */
 @Service
 public class TagService {
@@ -19,9 +20,13 @@ public class TagService {
     @Autowired
     private TagMapper tagMapper;
 
+    @Autowired
+    private DTOConverter dtoConverter;
+
     /**
      * 创建新标签
      */
+    @Transactional
     public TagDTO createTag(TagDTO tagDTO) {
         // 验证输入
         if (!tagDTO.isValid()) {
@@ -36,12 +41,12 @@ public class TagService {
             throw new RuntimeException("标签已存在");
         }
 
-        Tag tag = new Tag();
+        Tag tag = dtoConverter.convertFromTagDTO(tagDTO);
         tag.setName(processedName);
 
         int result = tagMapper.insert(tag);
         if (result > 0) {
-            return convertToDTO(tag);
+            return dtoConverter.convertToTagDTO(tag);
         } else {
             throw new RuntimeException("创建标签失败");
         }
@@ -51,7 +56,8 @@ public class TagService {
      * 根据ID查询标签
      */
     public Optional<TagDTO> getTagById(Long id) {
-        return tagMapper.findById(id).map(this::convertToDTO);
+        return tagMapper.findById(id)
+                .map(dtoConverter::convertToTagDTO);
     }
 
     /**
@@ -61,16 +67,16 @@ public class TagService {
         if (name == null || name.trim().isEmpty()) {
             return Optional.empty();
         }
-        return tagMapper.findByName(name.trim().toLowerCase()).map(this::convertToDTO);
+        return tagMapper.findByName(name.trim().toLowerCase())
+                .map(dtoConverter::convertToTagDTO);
     }
 
     /**
      * 查询所有标签
      */
     public List<TagDTO> getAllTags() {
-        return tagMapper.findAll().stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        List<Tag> tags = tagMapper.findAll();
+        return dtoConverter.convertToTagDTOList(tags);
     }
 
     /**
@@ -80,9 +86,8 @@ public class TagService {
         if (keyword == null || keyword.trim().isEmpty()) {
             return getAllTags();
         }
-        return tagMapper.findByKeyword(keyword.trim().toLowerCase()).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        List<Tag> tags = tagMapper.findByKeyword(keyword.trim().toLowerCase());
+        return dtoConverter.convertToTagDTOList(tags);
     }
 
     /**
@@ -93,14 +98,14 @@ public class TagService {
         if (size < 1) size = 10;
 
         int offset = (page - 1) * size;
-        return tagMapper.findWithPagination(size, offset).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        List<Tag> tags = tagMapper.findWithPagination(size, offset);
+        return dtoConverter.convertToTagDTOList(tags);
     }
 
     /**
      * 更新标签
      */
+    @Transactional
     public TagDTO updateTag(Long id, TagDTO tagDTO) {
         // 验证输入
         if (!tagDTO.isValid()) {
@@ -120,12 +125,12 @@ public class TagService {
             throw new RuntimeException("标签名称已存在");
         }
 
-        Tag tag = existing;
-        tag.setName(processedName);
+        // 更新标签名称
+        existing.setName(processedName);
 
-        int result = tagMapper.update(tag);
+        int result = tagMapper.update(existing);
         if (result > 0) {
-            return convertToDTO(tag);
+            return dtoConverter.convertToTagDTO(existing);
         } else {
             throw new RuntimeException("更新标签失败");
         }
@@ -134,6 +139,7 @@ public class TagService {
     /**
      * 删除标签
      */
+    @Transactional
     public boolean deleteTag(Long id) {
         if (!tagMapper.findById(id).isPresent()) {
             throw new RuntimeException("标签不存在");
@@ -173,32 +179,30 @@ public class TagService {
      */
     public List<TagDTO> getMostUsedTags(int limit) {
         if (limit < 1) limit = 10;
-        return tagMapper.findMostUsed(limit).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        List<Tag> tags = tagMapper.findMostUsed(limit);
+        return dtoConverter.convertToTagDTOList(tags);
     }
 
     /**
      * 获取未使用的标签
      */
     public List<TagDTO> getUnusedTags() {
-        return tagMapper.findUnused().stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        List<Tag> tags = tagMapper.findUnused();
+        return dtoConverter.convertToTagDTOList(tags);
     }
 
     /**
      * 根据题目ID查询相关标签
      */
     public List<TagDTO> getTagsByQuestionId(Long questionId) {
-        return tagMapper.findByQuestionId(questionId).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        List<Tag> tags = tagMapper.findByQuestionId(questionId);
+        return dtoConverter.convertToTagDTOList(tags);
     }
 
     /**
      * 创建或获取标签（如果不存在则创建）
      */
+    @Transactional
     public TagDTO createOrGetTag(String name) {
         if (name == null || name.trim().isEmpty()) {
             throw new RuntimeException("标签名称不能为空");
@@ -218,22 +222,11 @@ public class TagService {
     /**
      * 批量创建或获取标签
      */
+    @Transactional
     public List<TagDTO> createOrGetTags(List<String> names) {
         return names.stream()
                 .filter(name -> name != null && !name.trim().isEmpty())
                 .map(this::createOrGetTag)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * 将Tag实体转换为TagDTO
-     */
-    private TagDTO convertToDTO(Tag tag) {
-        return new TagDTO(
-                tag.getId(),
-                tag.getName(),
-                tag.getCreatedAt(),
-                tag.getUpdatedAt()
-        );
+                .collect(java.util.stream.Collectors.toList());
     }
 }

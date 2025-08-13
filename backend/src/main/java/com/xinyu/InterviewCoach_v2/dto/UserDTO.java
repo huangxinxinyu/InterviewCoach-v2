@@ -2,7 +2,6 @@ package com.xinyu.InterviewCoach_v2.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.xinyu.InterviewCoach_v2.entity.User;
 import com.xinyu.InterviewCoach_v2.enums.UserRole;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -11,10 +10,9 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDateTime;
 
 /**
- * 用户数据传输对象
- * 整合了用户信息展示、登录请求、注册请求、更新请求等功能
+ * 用户数据传输对象 - 重构后简化版本
  */
-@JsonInclude(JsonInclude.Include.NON_NULL) // 只包含非null字段
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class UserDTO {
     private Long id;
 
@@ -33,10 +31,6 @@ public class UserDTO {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime updatedAt;
 
-    private String token;
-    private boolean success;
-    private String message;
-
     public UserDTO() {}
 
     /**
@@ -51,7 +45,7 @@ public class UserDTO {
     }
 
     /**
-     * 登录请求构造方法
+     * 创建用户构造方法
      */
     public UserDTO(String email, String password) {
         this.email = email;
@@ -59,20 +53,15 @@ public class UserDTO {
     }
 
     /**
-     * 登录响应构造方法
+     * 创建用户构造方法（带角色）
      */
-    public UserDTO(boolean success, String message, String token, Long id, String email, UserRole role, LocalDateTime createdAt, LocalDateTime updatedAt) {
-        this.success = success;
-        this.message = message;
-        this.token = token;
-        this.id = id;
+    public UserDTO(String email, String password, UserRole role) {
         this.email = email;
+        this.password = password;
         this.role = role;
-        this.createdAt = createdAt;
-        this.updatedAt = updatedAt;
     }
 
-    // helper methods
+    // Helper methods
 
     /**
      * 检查是否为管理员
@@ -120,8 +109,14 @@ public class UserDTO {
         return this;
     }
 
-    // Getters and Setters
+    /**
+     * 验证用户信息的基本有效性
+     */
+    public boolean isValid() {
+        return email != null && !email.trim().isEmpty();
+    }
 
+    // Getters and Setters
     public Long getId() {
         return id;
     }
@@ -170,39 +165,12 @@ public class UserDTO {
         this.updatedAt = updatedAt;
     }
 
-    public String getToken() {
-        return token;
-    }
-
-    public void setToken(String token) {
-        this.token = token;
-    }
-
-    public boolean isSuccess() {
-        return success;
-    }
-
-    public void setSuccess(boolean success) {
-        this.success = success;
-    }
-
-    public String getMessage() {
-        return message;
-    }
-
-    public void setMessage(String message) {
-        this.message = message;
-    }
-
-
     @Override
     public String toString() {
         return "UserDTO{" +
                 "id=" + id +
                 ", email='" + email + '\'' +
                 ", role=" + role +
-                ", success=" + success +
-                ", message='" + message + '\'' +
                 ", createdAt=" + createdAt +
                 ", updatedAt=" + updatedAt +
                 '}';

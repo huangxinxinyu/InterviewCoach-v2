@@ -1,7 +1,10 @@
 package com.xinyu.InterviewCoach_v2.service;
 
 import com.xinyu.InterviewCoach_v2.dto.UserDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.auth.LoginResponseDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.auth.TokenValidationResponseDTO;
 import com.xinyu.InterviewCoach_v2.entity.User;
+import com.xinyu.InterviewCoach_v2.util.DTOConverter;
 import com.xinyu.InterviewCoach_v2.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -9,7 +12,7 @@ import org.springframework.stereotype.Service;
 import java.util.Optional;
 
 /**
- * 认证服务
+ * 认证服务 - 完全使用新的DTO结构
  */
 @Service
 public class AuthService {
@@ -18,12 +21,15 @@ public class AuthService {
     private UserService userService;
 
     @Autowired
+    private DTOConverter dtoConverter;
+
+    @Autowired
     private JwtUtil jwtUtil;
 
     /**
-     * 用户登录
+     * 用户登录 - 使用新的响应DTO
      */
-    public LoginResult login(String email, String password) {
+    public LoginResponseDTO loginWithDTO(String email, String password) {
         Optional<User> userOpt = userService.authenticate(email, password);
 
         if (userOpt.isPresent()) {
@@ -36,42 +42,65 @@ public class AuthService {
                     user.getId()
             );
 
-            // 转换为DTO
-            UserDTO userDTO = new UserDTO(
-                    user.getId(),
-                    user.getEmail(),
-                    user.getRole(),
-                    user.getCreatedAt(),
-                    user.getUpdatedAt()
-            );
+            // 转换为DTO并清除敏感信息
+            UserDTO userDTO = dtoConverter.convertToUserDTO(user).clearSensitiveInfo();
 
-            return new LoginResult(true, "登录成功", token, userDTO);
+            return LoginResponseDTO.builder()
+                    .success(true)
+                    .message("登录成功")
+                    .token(token)
+                    .user(userDTO);
         } else {
-            return new LoginResult(false, "邮箱或密码错误", null, null);
+            return LoginResponseDTO.builder()
+                    .success(false)
+                    .message("邮箱或密码错误");
         }
     }
 
     /**
-     * 验证token
+     * 验证Token并返回详细信息
      */
-    public boolean validateToken(String token) {
-        return jwtUtil.isTokenValid(token);
-    }
-
-    /**
-     * 从token获取用户信息
-     */
-    public Optional<UserDTO> getUserFromToken(String token) {
+    public TokenValidationResponseDTO validateTokenWithDTO(String token) {
         try {
-            String email = jwtUtil.getUsernameFromToken(token);
-            return userService.getUserByEmail(email);
+            if (jwtUtil.isTokenValid(token)) {
+                String email = jwtUtil.getUsernameFromToken(token);
+                Optional<UserDTO> user = userService.getUserByEmail(email);
+
+                if (user.isPresent()) {
+                    return TokenValidationResponseDTO.builder()
+                            .valid(true)
+                            .message("Token有效")
+                            .user(user.get().clearSensitiveInfo());
+                }
+            }
+
+            return TokenValidationResponseDTO.builder()
+                    .valid(false)
+                    .message("Token无效或已过期");
+
         } catch (Exception e) {
-            return Optional.empty();
+            return TokenValidationResponseDTO.builder()
+                    .valid(false)
+                    .message("Token验证失败: " + e.getMessage());
         }
     }
 
     /**
-     * 登录结果内部类
+     * 用户登录 - 保持原有方法兼容性
+     */
+    public LoginResult login(String email, String password) {
+        LoginResponseDTO newResponse = loginWithDTO(email, password);
+
+        return new LoginResult(
+                newResponse.isSuccess(),
+                newResponse.getMessage(),
+                newResponse.getToken(),
+                newResponse.getUser()
+        );
+    }
+
+    /**
+     * 登录结果内部类 - 保持向后兼容
      */
     public static class LoginResult {
         private boolean success;

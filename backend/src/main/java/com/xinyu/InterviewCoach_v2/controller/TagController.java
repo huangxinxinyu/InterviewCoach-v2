@@ -1,7 +1,11 @@
 package com.xinyu.InterviewCoach_v2.controller;
 
 import com.xinyu.InterviewCoach_v2.dto.TagDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.common.ApiErrorResponseDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.common.ApiSuccessResponseDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.common.PageResponseDTO;
 import com.xinyu.InterviewCoach_v2.service.TagService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -11,11 +15,11 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * 标签控制层
+ * 标签控制层 - 重构后使用统一的DTO
  */
 @RestController
 @RequestMapping("/api/tags")
-@CrossOrigin(origins = "*") // 允许跨域访问
+@CrossOrigin(origins = "*")
 public class TagController {
 
     @Autowired
@@ -25,12 +29,14 @@ public class TagController {
      * 创建新标签
      */
     @PostMapping
-    public ResponseEntity<?> createTag(@RequestBody TagDTO tagDTO) {
+    public ResponseEntity<?> createTag(@Valid @RequestBody TagDTO tagDTO) {
         try {
             TagDTO createdTag = tagService.createTag(tagDTO);
-            return ResponseEntity.status(HttpStatus.CREATED).body(createdTag);
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(new ApiSuccessResponseDTO<>("标签创建成功", createdTag));
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+            return ResponseEntity.badRequest()
+                    .body(new ApiErrorResponseDTO(e.getMessage(), "CREATE_TAG_FAILED"));
         }
     }
 
@@ -41,7 +47,7 @@ public class TagController {
     public ResponseEntity<?> getTagById(@PathVariable Long id) {
         Optional<TagDTO> tag = tagService.getTagById(id);
         if (tag.isPresent()) {
-            return ResponseEntity.ok(tag.get());
+            return ResponseEntity.ok(new ApiSuccessResponseDTO<>(tag.get()));
         } else {
             return ResponseEntity.notFound().build();
         }
@@ -54,7 +60,7 @@ public class TagController {
     public ResponseEntity<?> getTagByName(@PathVariable String name) {
         Optional<TagDTO> tag = tagService.getTagByName(name);
         if (tag.isPresent()) {
-            return ResponseEntity.ok(tag.get());
+            return ResponseEntity.ok(new ApiSuccessResponseDTO<>(tag.get()));
         } else {
             return ResponseEntity.notFound().build();
         }
@@ -64,25 +70,25 @@ public class TagController {
      * 查询所有标签
      */
     @GetMapping
-    public ResponseEntity<List<TagDTO>> getAllTags() {
+    public ResponseEntity<ApiSuccessResponseDTO<List<TagDTO>>> getAllTags() {
         List<TagDTO> tags = tagService.getAllTags();
-        return ResponseEntity.ok(tags);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(tags));
     }
 
     /**
      * 根据关键词搜索标签
      */
     @GetMapping("/search")
-    public ResponseEntity<List<TagDTO>> searchTags(@RequestParam String keyword) {
+    public ResponseEntity<ApiSuccessResponseDTO<List<TagDTO>>> searchTags(@RequestParam String keyword) {
         List<TagDTO> tags = tagService.searchTags(keyword);
-        return ResponseEntity.ok(tags);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(tags));
     }
 
     /**
      * 分页查询标签
      */
     @GetMapping("/page")
-    public ResponseEntity<PageResponse<TagDTO>> getTagsWithPagination(
+    public ResponseEntity<ApiSuccessResponseDTO<PageResponseDTO<TagDTO>>> getTagsWithPagination(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
 
@@ -90,23 +96,27 @@ public class TagController {
         long totalCount = tagService.getTagCount();
         int totalPages = (int) Math.ceil((double) totalCount / size);
 
-        PageResponse<TagDTO> response = new PageResponse<>(
-                tags, page, size, totalCount, totalPages
-        );
+        PageResponseDTO<TagDTO> pageResponse = PageResponseDTO.<TagDTO>builder()
+                .content(tags)
+                .currentPage(page)
+                .pageSize(size)
+                .totalElements(totalCount)
+                .totalPages(totalPages);
 
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(pageResponse));
     }
 
     /**
      * 更新标签
      */
     @PutMapping("/{id}")
-    public ResponseEntity<?> updateTag(@PathVariable Long id, @RequestBody TagDTO tagDTO) {
+    public ResponseEntity<?> updateTag(@PathVariable Long id, @Valid @RequestBody TagDTO tagDTO) {
         try {
             TagDTO updatedTag = tagService.updateTag(id, tagDTO);
-            return ResponseEntity.ok(updatedTag);
+            return ResponseEntity.ok(new ApiSuccessResponseDTO<>("标签更新成功", updatedTag));
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+            return ResponseEntity.badRequest()
+                    .body(new ApiErrorResponseDTO(e.getMessage(), "UPDATE_TAG_FAILED"));
         }
     }
 
@@ -118,12 +128,14 @@ public class TagController {
         try {
             boolean deleted = tagService.deleteTag(id);
             if (deleted) {
-                return ResponseEntity.ok(new SuccessResponse("标签删除成功"));
+                return ResponseEntity.ok(new ApiSuccessResponseDTO<>("标签删除成功"));
             } else {
-                return ResponseEntity.badRequest().body(new ErrorResponse("删除标签失败"));
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO("删除标签失败", "DELETE_TAG_FAILED"));
             }
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+            return ResponseEntity.badRequest()
+                    .body(new ApiErrorResponseDTO(e.getMessage(), "DELETE_TAG_ERROR"));
         }
     }
 
@@ -131,55 +143,55 @@ public class TagController {
      * 获取标签总数
      */
     @GetMapping("/count")
-    public ResponseEntity<Long> getTagCount() {
+    public ResponseEntity<ApiSuccessResponseDTO<Long>> getTagCount() {
         long count = tagService.getTagCount();
-        return ResponseEntity.ok(count);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(count));
     }
 
     /**
      * 根据关键词统计标签数量
      */
     @GetMapping("/count/search")
-    public ResponseEntity<Long> getTagCountByKeyword(@RequestParam String keyword) {
+    public ResponseEntity<ApiSuccessResponseDTO<Long>> getTagCountByKeyword(@RequestParam String keyword) {
         long count = tagService.getTagCountByKeyword(keyword);
-        return ResponseEntity.ok(count);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(count));
     }
 
     /**
      * 检查标签是否存在
      */
     @GetMapping("/exists")
-    public ResponseEntity<Boolean> checkTagExists(@RequestParam String name) {
+    public ResponseEntity<ApiSuccessResponseDTO<Boolean>> checkTagExists(@RequestParam String name) {
         boolean exists = tagService.tagExists(name);
-        return ResponseEntity.ok(exists);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(exists));
     }
 
     /**
      * 获取最常用的标签
      */
     @GetMapping("/most-used")
-    public ResponseEntity<List<TagDTO>> getMostUsedTags(
+    public ResponseEntity<ApiSuccessResponseDTO<List<TagDTO>>> getMostUsedTags(
             @RequestParam(defaultValue = "10") int limit) {
         List<TagDTO> tags = tagService.getMostUsedTags(limit);
-        return ResponseEntity.ok(tags);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(tags));
     }
 
     /**
      * 获取未使用的标签
      */
     @GetMapping("/unused")
-    public ResponseEntity<List<TagDTO>> getUnusedTags() {
+    public ResponseEntity<ApiSuccessResponseDTO<List<TagDTO>>> getUnusedTags() {
         List<TagDTO> tags = tagService.getUnusedTags();
-        return ResponseEntity.ok(tags);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(tags));
     }
 
     /**
      * 根据题目ID查询相关标签
      */
     @GetMapping("/by-question/{questionId}")
-    public ResponseEntity<List<TagDTO>> getTagsByQuestionId(@PathVariable Long questionId) {
+    public ResponseEntity<ApiSuccessResponseDTO<List<TagDTO>>> getTagsByQuestionId(@PathVariable Long questionId) {
         List<TagDTO> tags = tagService.getTagsByQuestionId(questionId);
-        return ResponseEntity.ok(tags);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(tags));
     }
 
     /**
@@ -189,107 +201,10 @@ public class TagController {
     public ResponseEntity<?> createOrGetTags(@RequestBody List<String> names) {
         try {
             List<TagDTO> tags = tagService.createOrGetTags(names);
-            return ResponseEntity.ok(tags);
+            return ResponseEntity.ok(new ApiSuccessResponseDTO<>("标签批量处理成功", tags));
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
-        }
-    }
-
-    /**
-     * 分页响应DTO
-     */
-    public static class PageResponse<T> {
-        private List<T> content;
-        private int currentPage;
-        private int pageSize;
-        private long totalElements;
-        private int totalPages;
-
-        public PageResponse(List<T> content, int currentPage, int pageSize, long totalElements, int totalPages) {
-            this.content = content;
-            this.currentPage = currentPage;
-            this.pageSize = pageSize;
-            this.totalElements = totalElements;
-            this.totalPages = totalPages;
-        }
-
-        // Getters and Setters
-        public List<T> getContent() {
-            return content;
-        }
-
-        public void setContent(List<T> content) {
-            this.content = content;
-        }
-
-        public int getCurrentPage() {
-            return currentPage;
-        }
-
-        public void setCurrentPage(int currentPage) {
-            this.currentPage = currentPage;
-        }
-
-        public int getPageSize() {
-            return pageSize;
-        }
-
-        public void setPageSize(int pageSize) {
-            this.pageSize = pageSize;
-        }
-
-        public long getTotalElements() {
-            return totalElements;
-        }
-
-        public void setTotalElements(long totalElements) {
-            this.totalElements = totalElements;
-        }
-
-        public int getTotalPages() {
-            return totalPages;
-        }
-
-        public void setTotalPages(int totalPages) {
-            this.totalPages = totalPages;
-        }
-    }
-
-    /**
-     * 错误响应DTO
-     */
-    public static class ErrorResponse {
-        private String error;
-
-        public ErrorResponse(String error) {
-            this.error = error;
-        }
-
-        public String getError() {
-            return error;
-        }
-
-        public void setError(String error) {
-            this.error = error;
-        }
-    }
-
-    /**
-     * 成功响应DTO
-     */
-    public static class SuccessResponse {
-        private String message;
-
-        public SuccessResponse(String message) {
-            this.message = message;
-        }
-
-        public String getMessage() {
-            return message;
-        }
-
-        public void setMessage(String message) {
-            this.message = message;
+            return ResponseEntity.badRequest()
+                    .body(new ApiErrorResponseDTO(e.getMessage(), "BATCH_TAG_FAILED"));
         }
     }
 }

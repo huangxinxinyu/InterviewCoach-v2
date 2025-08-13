@@ -4,13 +4,13 @@ import com.xinyu.InterviewCoach_v2.dto.UserDTO;
 import com.xinyu.InterviewCoach_v2.entity.User;
 import com.xinyu.InterviewCoach_v2.enums.UserRole;
 import com.xinyu.InterviewCoach_v2.mapper.UserMapper;
+import com.xinyu.InterviewCoach_v2.util.DTOConverter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
  * 用户业务逻辑层
@@ -23,6 +23,9 @@ public class UserService {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private DTOConverter dtoConverter;
 
     /**
      * 创建新用户
@@ -42,7 +45,7 @@ public class UserService {
 
         int result = userMapper.insert(user);
         if (result > 0) {
-            return convertToDTO(user);
+            return dtoConverter.convertToUserDTO(user);
         } else {
             throw new RuntimeException("创建用户失败");
         }
@@ -52,14 +55,17 @@ public class UserService {
      * 根据ID查询用户
      */
     public Optional<UserDTO> getUserById(Long id) {
-        return userMapper.findById(id).map(this::convertToDTO);
+        return userMapper.findById(id)
+                .map(user -> dtoConverter.convertToUserDTO(user).clearSensitiveInfo());
     }
 
     /**
      * 根据邮箱查询用户
      */
     public Optional<UserDTO> getUserByEmail(String email) {
-        return userMapper.findByEmail(email).map(this::convertToDTO);
+        return userMapper.findByEmail(email)
+                .map(dtoConverter::convertToUserDTO)
+                .map(UserDTO::clearSensitiveInfo);
     }
 
     /**
@@ -73,18 +79,20 @@ public class UserService {
      * 查询所有用户
      */
     public List<UserDTO> getAllUsers() {
-        return userMapper.findAll().stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        List<User> users = userMapper.findAll();
+        return dtoConverter.clearSensitiveInfoFromList(
+                dtoConverter.convertToUserDTOList(users)
+        );
     }
 
     /**
      * 根据角色查询用户
      */
     public List<UserDTO> getUsersByRole(UserRole role) {
-        return userMapper.findByRole(role).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        List<User> users = userMapper.findByRole(role);
+        return dtoConverter.clearSensitiveInfoFromList(
+                dtoConverter.convertToUserDTOList(users)
+        );
     }
 
     /**
@@ -113,7 +121,7 @@ public class UserService {
 
         int result = userMapper.update(user);
         if (result > 0) {
-            return convertToDTO(user);
+            return dtoConverter.convertToUserDTO(user);
         } else {
             throw new RuntimeException("更新用户失败");
         }
@@ -152,18 +160,5 @@ public class UserService {
             return user;
         }
         return Optional.empty();
-    }
-
-    /**
-     * 将User实体转换为UserDTO
-     */
-    private UserDTO convertToDTO(User user) {
-        return new UserDTO(
-                user.getId(),
-                user.getEmail(),
-                user.getRole(),
-                user.getCreatedAt(),
-                user.getUpdatedAt()
-        );
     }
 }

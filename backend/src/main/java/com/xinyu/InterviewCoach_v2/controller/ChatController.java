@@ -1,20 +1,28 @@
 package com.xinyu.InterviewCoach_v2.controller;
 
-import com.xinyu.InterviewCoach_v2.dto.*;
+import com.xinyu.InterviewCoach_v2.dto.MessageDTO;
+import com.xinyu.InterviewCoach_v2.dto.SessionDTO;
+import com.xinyu.InterviewCoach_v2.dto.request.chat.SendMessageRequestDTO;
+import com.xinyu.InterviewCoach_v2.dto.request.chat.StartSessionRequestDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.chat.ChatResponseDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.chat.SessionResponseDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.common.ApiErrorResponseDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.common.ApiSuccessResponseDTO;
 import com.xinyu.InterviewCoach_v2.service.ChatService;
 import com.xinyu.InterviewCoach_v2.service.SessionService;
 import com.xinyu.InterviewCoach_v2.util.JwtUtil;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
 
 /**
- * 对话控制层
+ * 对话控制层 - 重构后使用统一的DTO
  */
 @RestController
 @RequestMapping("/api/chat")
@@ -34,24 +42,43 @@ public class ChatController {
      * 启动新的面试会话
      */
     @PostMapping("/sessions")
-    public ResponseEntity<?> startSession(@RequestBody StartSessionRequest request, HttpServletRequest httpRequest) {
+    public ResponseEntity<?> startSession(@Valid @RequestBody StartSessionRequestDTO request,
+                                          HttpServletRequest httpRequest) {
         try {
             Long userId = getUserIdFromRequest(httpRequest);
             if (userId == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse("用户未认证"));
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(new ApiErrorResponseDTO("用户未认证", "UNAUTHORIZED"));
             }
 
-            SessionResponse response = chatService.startSession(userId, request);
+            // 将新的DTO转换为旧的DTO格式（临时兼容）
+            com.xinyu.InterviewCoach_v2.dto.StartSessionRequest oldRequest =
+                    new com.xinyu.InterviewCoach_v2.dto.StartSessionRequest();
+            oldRequest.setMode(request.getMode());
+            oldRequest.setExpectedQuestionCount(request.getExpectedQuestionCount());
+            oldRequest.setTagId(request.getTagId());
+            oldRequest.setQuestionIds(request.getQuestionIds());
 
-            if (response.isSuccess()) {
+            com.xinyu.InterviewCoach_v2.dto.SessionResponse oldResponse =
+                    chatService.startSession(userId, oldRequest);
+
+            if (oldResponse.isSuccess()) {
+                // 转换为新的响应格式
+                SessionResponseDTO response = SessionResponseDTO.builder()
+                        .success(true)
+                        .session(oldResponse.getSession())
+                        .currentState(oldResponse.getCurrentState())
+                        .chatInputEnabled(oldResponse.isChatInputEnabled());
+
                 return ResponseEntity.ok(response);
             } else {
-                return ResponseEntity.badRequest().body(new ErrorResponse(response.getMessage()));
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO(oldResponse.getMessage(), "START_SESSION_FAILED"));
             }
 
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("启动面试失败: " + e.getMessage()));
+                    .body(new ApiErrorResponseDTO("启动面试失败: " + e.getMessage(), "START_SESSION_ERROR"));
         }
     }
 
@@ -60,30 +87,41 @@ public class ChatController {
      */
     @PostMapping("/sessions/{sessionId}/messages")
     public ResponseEntity<?> sendMessage(@PathVariable Long sessionId,
-                                         @RequestBody SendMessageRequest request,
+                                         @Valid @RequestBody SendMessageRequestDTO request,
                                          HttpServletRequest httpRequest) {
         try {
             Long userId = getUserIdFromRequest(httpRequest);
             if (userId == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse("用户未认证"));
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(new ApiErrorResponseDTO("用户未认证", "UNAUTHORIZED"));
             }
 
-            // 验证消息内容
-            if (request.getText() == null || request.getText().trim().isEmpty()) {
-                return ResponseEntity.badRequest().body(new ErrorResponse("消息内容不能为空"));
-            }
+            // 将新的DTO转换为旧的DTO格式（临时兼容）
+            com.xinyu.InterviewCoach_v2.dto.SendMessageRequest oldRequest =
+                    new com.xinyu.InterviewCoach_v2.dto.SendMessageRequest();
+            oldRequest.setText(request.getText());
 
-            ChatResponse response = chatService.processUserMessage(userId, sessionId, request);
+            com.xinyu.InterviewCoach_v2.dto.ChatResponse oldResponse =
+                    chatService.processUserMessage(userId, sessionId, oldRequest);
 
-            if (response.isSuccess()) {
+            if (oldResponse.isSuccess()) {
+                // 转换为新的响应格式
+                ChatResponseDTO response = ChatResponseDTO.builder()
+                        .success(true)
+                        .aiMessage(oldResponse.getAiMessage())
+                        .currentState(oldResponse.getCurrentState())
+                        .chatInputEnabled(oldResponse.isChatInputEnabled())
+                        .session(oldResponse.getSession());
+
                 return ResponseEntity.ok(response);
             } else {
-                return ResponseEntity.badRequest().body(new ErrorResponse(response.getMessage()));
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO(oldResponse.getMessage(), "SEND_MESSAGE_FAILED"));
             }
 
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("发送消息失败: " + e.getMessage()));
+                    .body(new ApiErrorResponseDTO("发送消息失败: " + e.getMessage(), "SEND_MESSAGE_ERROR"));
         }
     }
 
@@ -95,15 +133,16 @@ public class ChatController {
         try {
             Long userId = getUserIdFromRequest(httpRequest);
             if (userId == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse("用户未认证"));
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(new ApiErrorResponseDTO("用户未认证", "UNAUTHORIZED"));
             }
 
             List<MessageDTO> messages = chatService.getSessionMessages(userId, sessionId);
-            return ResponseEntity.ok(messages);
+            return ResponseEntity.ok(new ApiSuccessResponseDTO<>(messages));
 
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("获取消息历史失败: " + e.getMessage()));
+                    .body(new ApiErrorResponseDTO("获取消息历史失败: " + e.getMessage(), "GET_MESSAGES_ERROR"));
         }
     }
 
@@ -115,20 +154,30 @@ public class ChatController {
         try {
             Long userId = getUserIdFromRequest(httpRequest);
             if (userId == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse("用户未认证"));
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(new ApiErrorResponseDTO("用户未认证", "UNAUTHORIZED"));
             }
 
-            ChatResponse response = chatService.endSession(userId, sessionId);
+            com.xinyu.InterviewCoach_v2.dto.ChatResponse oldResponse =
+                    chatService.endSession(userId, sessionId);
 
-            if (response.isSuccess()) {
+            if (oldResponse.isSuccess()) {
+                // 转换为新的响应格式
+                ChatResponseDTO response = ChatResponseDTO.builder()
+                        .success(true)
+                        .aiMessage(oldResponse.getAiMessage())
+                        .currentState(oldResponse.getCurrentState())
+                        .chatInputEnabled(oldResponse.isChatInputEnabled());
+
                 return ResponseEntity.ok(response);
             } else {
-                return ResponseEntity.badRequest().body(new ErrorResponse(response.getMessage()));
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO(oldResponse.getMessage(), "END_SESSION_FAILED"));
             }
 
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("结束会话失败: " + e.getMessage()));
+                    .body(new ApiErrorResponseDTO("结束会话失败: " + e.getMessage(), "END_SESSION_ERROR"));
         }
     }
 
@@ -140,20 +189,21 @@ public class ChatController {
         try {
             Long userId = getUserIdFromRequest(httpRequest);
             if (userId == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse("用户未认证"));
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(new ApiErrorResponseDTO("用户未认证", "UNAUTHORIZED"));
             }
 
             var activeSession = sessionService.getActiveSessionByUserId(userId);
 
             if (activeSession.isPresent()) {
-                return ResponseEntity.ok(activeSession.get());
+                return ResponseEntity.ok(new ApiSuccessResponseDTO<>(activeSession.get()));
             } else {
-                return ResponseEntity.ok(new SuccessResponse("当前没有活跃会话"));
+                return ResponseEntity.ok(new ApiSuccessResponseDTO<>("当前没有活跃会话", null));
             }
 
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("获取活跃会话失败: " + e.getMessage()));
+                    .body(new ApiErrorResponseDTO("获取活跃会话失败: " + e.getMessage(), "GET_ACTIVE_SESSION_ERROR"));
         }
     }
 
@@ -165,15 +215,16 @@ public class ChatController {
         try {
             Long userId = getUserIdFromRequest(httpRequest);
             if (userId == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse("用户未认证"));
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(new ApiErrorResponseDTO("用户未认证", "UNAUTHORIZED"));
             }
 
             List<SessionDTO> sessions = sessionService.getSessionsByUserId(userId);
-            return ResponseEntity.ok(sessions);
+            return ResponseEntity.ok(new ApiSuccessResponseDTO<>(sessions));
 
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("获取会话历史失败: " + e.getMessage()));
+                    .body(new ApiErrorResponseDTO("获取会话历史失败: " + e.getMessage(), "GET_SESSIONS_ERROR"));
         }
     }
 
@@ -185,25 +236,27 @@ public class ChatController {
         try {
             Long userId = getUserIdFromRequest(httpRequest);
             if (userId == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse("用户未认证"));
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(new ApiErrorResponseDTO("用户未认证", "UNAUTHORIZED"));
             }
 
             // 验证会话所有权
             if (!sessionService.validateSessionOwnership(sessionId, userId)) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ErrorResponse("无权访问此会话"));
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(new ApiErrorResponseDTO("无权访问此会话", "FORBIDDEN"));
             }
 
             var session = sessionService.getSessionById(sessionId);
 
             if (session.isPresent()) {
-                return ResponseEntity.ok(session.get());
+                return ResponseEntity.ok(new ApiSuccessResponseDTO<>(session.get()));
             } else {
                 return ResponseEntity.notFound().build();
             }
 
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("获取会话失败: " + e.getMessage()));
+                    .body(new ApiErrorResponseDTO("获取会话失败: " + e.getMessage(), "GET_SESSION_ERROR"));
         }
     }
 
@@ -215,20 +268,22 @@ public class ChatController {
         try {
             Long userId = getUserIdFromRequest(httpRequest);
             if (userId == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse("用户未认证"));
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(new ApiErrorResponseDTO("用户未认证", "UNAUTHORIZED"));
             }
 
             boolean success = sessionService.endAllActiveSessionsByUserId(userId);
 
             if (success) {
-                return ResponseEntity.ok(new SuccessResponse("所有活跃会话已结束"));
+                return ResponseEntity.ok(new ApiSuccessResponseDTO<>("所有活跃会话已结束"));
             } else {
-                return ResponseEntity.badRequest().body(new ErrorResponse("结束会话失败"));
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO("结束会话失败", "END_ALL_SESSIONS_FAILED"));
             }
 
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("结束会话失败: " + e.getMessage()));
+                    .body(new ApiErrorResponseDTO("结束会话失败: " + e.getMessage(), "END_ALL_SESSIONS_ERROR"));
         }
     }
 
@@ -240,15 +295,16 @@ public class ChatController {
         try {
             Long userId = getUserIdFromRequest(httpRequest);
             if (userId == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse("用户未认证"));
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(new ApiErrorResponseDTO("用户未认证", "UNAUTHORIZED"));
             }
 
             boolean hasActive = sessionService.hasActiveSession(userId);
-            return ResponseEntity.ok(Map.of("hasActiveSession", hasActive));
+            return ResponseEntity.ok(new ApiSuccessResponseDTO<>(Map.of("hasActiveSession", hasActive)));
 
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponse("检查活跃会话失败: " + e.getMessage()));
+                    .body(new ApiErrorResponseDTO("检查活跃会话失败: " + e.getMessage(), "CHECK_ACTIVE_SESSION_ERROR"));
         }
     }
 
@@ -265,44 +321,6 @@ public class ChatController {
             return null;
         } catch (Exception e) {
             return null;
-        }
-    }
-
-    /**
-     * 错误响应DTO
-     */
-    public static class ErrorResponse {
-        private String error;
-
-        public ErrorResponse(String error) {
-            this.error = error;
-        }
-
-        public String getError() {
-            return error;
-        }
-
-        public void setError(String error) {
-            this.error = error;
-        }
-    }
-
-    /**
-     * 成功响应DTO
-     */
-    public static class SuccessResponse {
-        private String message;
-
-        public SuccessResponse(String message) {
-            this.message = message;
-        }
-
-        public String getMessage() {
-            return message;
-        }
-
-        public void setMessage(String message) {
-            this.message = message;
         }
     }
 }

@@ -2,7 +2,12 @@ package com.xinyu.InterviewCoach_v2.controller;
 
 import com.xinyu.InterviewCoach_v2.dto.QuestionDTO;
 import com.xinyu.InterviewCoach_v2.dto.TagDTO;
+import com.xinyu.InterviewCoach_v2.dto.request.tag.TagNameRequestDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.common.ApiErrorResponseDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.common.ApiSuccessResponseDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.tag.CleanupResponseDTO;
 import com.xinyu.InterviewCoach_v2.service.QuestionTagService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -10,11 +15,11 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * 题目标签关联控制层
+ * 题目标签关联控制层 - 重构后使用统一的DTO
  */
 @RestController
 @RequestMapping("/api/question-tags")
-@CrossOrigin(origins = "*") // 允许跨域访问
+@CrossOrigin(origins = "*")
 public class QuestionTagController {
 
     @Autowired
@@ -28,12 +33,14 @@ public class QuestionTagController {
         try {
             boolean success = questionTagService.addTagToQuestion(questionId, tagId);
             if (success) {
-                return ResponseEntity.ok(new SuccessResponse("标签添加成功"));
+                return ResponseEntity.ok(new ApiSuccessResponseDTO<>("标签添加成功"));
             } else {
-                return ResponseEntity.badRequest().body(new ErrorResponse("标签添加失败"));
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO("标签添加失败", "ADD_TAG_FAILED"));
             }
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+            return ResponseEntity.badRequest()
+                    .body(new ApiErrorResponseDTO(e.getMessage(), "ADD_TAG_ERROR"));
         }
     }
 
@@ -45,12 +52,14 @@ public class QuestionTagController {
         try {
             boolean success = questionTagService.removeTagFromQuestion(questionId, tagId);
             if (success) {
-                return ResponseEntity.ok(new SuccessResponse("标签移除成功"));
+                return ResponseEntity.ok(new ApiSuccessResponseDTO<>("标签移除成功"));
             } else {
-                return ResponseEntity.badRequest().body(new ErrorResponse("标签移除失败"));
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO("标签移除失败", "REMOVE_TAG_FAILED"));
             }
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+            return ResponseEntity.badRequest()
+                    .body(new ApiErrorResponseDTO(e.getMessage(), "REMOVE_TAG_ERROR"));
         }
     }
 
@@ -62,12 +71,14 @@ public class QuestionTagController {
         try {
             boolean success = questionTagService.addTagsToQuestion(questionId, tagIds);
             if (success) {
-                return ResponseEntity.ok(new SuccessResponse("标签批量添加成功"));
+                return ResponseEntity.ok(new ApiSuccessResponseDTO<>("标签批量添加成功"));
             } else {
-                return ResponseEntity.badRequest().body(new ErrorResponse("标签批量添加失败"));
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO("标签批量添加失败", "BATCH_ADD_TAGS_FAILED"));
             }
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+            return ResponseEntity.badRequest()
+                    .body(new ApiErrorResponseDTO(e.getMessage(), "BATCH_ADD_TAGS_ERROR"));
         }
     }
 
@@ -79,12 +90,14 @@ public class QuestionTagController {
         try {
             boolean success = questionTagService.removeTagsFromQuestion(questionId, tagIds);
             if (success) {
-                return ResponseEntity.ok(new SuccessResponse("标签批量移除成功"));
+                return ResponseEntity.ok(new ApiSuccessResponseDTO<>("标签批量移除成功"));
             } else {
-                return ResponseEntity.badRequest().body(new ErrorResponse("标签批量移除失败"));
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO("标签批量移除失败", "BATCH_REMOVE_TAGS_FAILED"));
             }
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+            return ResponseEntity.badRequest()
+                    .body(new ApiErrorResponseDTO(e.getMessage(), "BATCH_REMOVE_TAGS_ERROR"));
         }
     }
 
@@ -96,12 +109,14 @@ public class QuestionTagController {
         try {
             boolean success = questionTagService.setQuestionTags(questionId, tagIds);
             if (success) {
-                return ResponseEntity.ok(new SuccessResponse("题目标签设置成功"));
+                return ResponseEntity.ok(new ApiSuccessResponseDTO<>("题目标签设置成功"));
             } else {
-                return ResponseEntity.badRequest().body(new ErrorResponse("题目标签设置失败"));
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO("题目标签设置失败", "SET_QUESTION_TAGS_FAILED"));
             }
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+            return ResponseEntity.badRequest()
+                    .body(new ApiErrorResponseDTO(e.getMessage(), "SET_QUESTION_TAGS_ERROR"));
         }
     }
 
@@ -113,12 +128,14 @@ public class QuestionTagController {
         try {
             boolean success = questionTagService.removeAllTagsFromQuestion(questionId);
             if (success) {
-                return ResponseEntity.ok(new SuccessResponse("题目所有标签移除成功"));
+                return ResponseEntity.ok(new ApiSuccessResponseDTO<>("题目所有标签移除成功"));
             } else {
-                return ResponseEntity.badRequest().body(new ErrorResponse("题目所有标签移除失败"));
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO("题目所有标签移除失败", "REMOVE_ALL_TAGS_FAILED"));
             }
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+            return ResponseEntity.badRequest()
+                    .body(new ApiErrorResponseDTO(e.getMessage(), "REMOVE_ALL_TAGS_ERROR"));
         }
     }
 
@@ -126,16 +143,19 @@ public class QuestionTagController {
      * 通过标签名称为题目添加标签
      */
     @PostMapping("/questions/{questionId}/tags/by-name")
-    public ResponseEntity<?> addTagToQuestionByName(@PathVariable Long questionId, @RequestBody TagNameRequest request) {
+    public ResponseEntity<?> addTagToQuestionByName(@PathVariable Long questionId,
+                                                    @Valid @RequestBody TagNameRequestDTO request) {
         try {
             boolean success = questionTagService.addTagToQuestionByName(questionId, request.getName());
             if (success) {
-                return ResponseEntity.ok(new SuccessResponse("标签添加成功"));
+                return ResponseEntity.ok(new ApiSuccessResponseDTO<>("标签添加成功"));
             } else {
-                return ResponseEntity.badRequest().body(new ErrorResponse("标签添加失败"));
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO("标签添加失败", "ADD_TAG_BY_NAME_FAILED"));
             }
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+            return ResponseEntity.badRequest()
+                    .body(new ApiErrorResponseDTO(e.getMessage(), "ADD_TAG_BY_NAME_ERROR"));
         }
     }
 
@@ -143,108 +163,108 @@ public class QuestionTagController {
      * 获取题目的所有标签
      */
     @GetMapping("/questions/{questionId}/tags")
-    public ResponseEntity<List<TagDTO>> getTagsByQuestionId(@PathVariable Long questionId) {
+    public ResponseEntity<ApiSuccessResponseDTO<List<TagDTO>>> getTagsByQuestionId(@PathVariable Long questionId) {
         List<TagDTO> tags = questionTagService.getTagsByQuestionId(questionId);
-        return ResponseEntity.ok(tags);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(tags));
     }
 
     /**
      * 获取标签的所有题目
      */
     @GetMapping("/tags/{tagId}/questions")
-    public ResponseEntity<List<QuestionDTO>> getQuestionsByTagId(@PathVariable Long tagId) {
+    public ResponseEntity<ApiSuccessResponseDTO<List<QuestionDTO>>> getQuestionsByTagId(@PathVariable Long tagId) {
         List<QuestionDTO> questions = questionTagService.getQuestionsByTagId(tagId);
-        return ResponseEntity.ok(questions);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(questions));
     }
 
     /**
      * 根据多个标签查询题目（AND关系 - 题目必须包含所有标签）
      */
     @PostMapping("/questions/by-all-tags")
-    public ResponseEntity<List<QuestionDTO>> getQuestionsByAllTags(@RequestBody List<Long> tagIds) {
+    public ResponseEntity<ApiSuccessResponseDTO<List<QuestionDTO>>> getQuestionsByAllTags(@RequestBody List<Long> tagIds) {
         List<QuestionDTO> questions = questionTagService.getQuestionsByAllTags(tagIds);
-        return ResponseEntity.ok(questions);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(questions));
     }
 
     /**
      * 根据多个标签查询题目（OR关系 - 题目包含任一标签）
      */
     @PostMapping("/questions/by-any-tags")
-    public ResponseEntity<List<QuestionDTO>> getQuestionsByAnyTags(@RequestBody List<Long> tagIds) {
+    public ResponseEntity<ApiSuccessResponseDTO<List<QuestionDTO>>> getQuestionsByAnyTags(@RequestBody List<Long> tagIds) {
         List<QuestionDTO> questions = questionTagService.getQuestionsByAnyTags(tagIds);
-        return ResponseEntity.ok(questions);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(questions));
     }
 
     /**
      * 根据标签名称查询题目（支持模糊搜索）
      */
     @GetMapping("/questions/by-tag-name")
-    public ResponseEntity<List<QuestionDTO>> getQuestionsByTagName(@RequestParam String tagName) {
+    public ResponseEntity<ApiSuccessResponseDTO<List<QuestionDTO>>> getQuestionsByTagName(@RequestParam String tagName) {
         List<QuestionDTO> questions = questionTagService.getQuestionsByTagName(tagName);
-        return ResponseEntity.ok(questions);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(questions));
     }
 
     /**
      * 获取最热门的标签
      */
     @GetMapping("/tags/hot")
-    public ResponseEntity<List<TagDTO>> getHotTags(@RequestParam(defaultValue = "10") int limit) {
+    public ResponseEntity<ApiSuccessResponseDTO<List<TagDTO>>> getHotTags(@RequestParam(defaultValue = "10") int limit) {
         List<TagDTO> tags = questionTagService.getHotTags(limit);
-        return ResponseEntity.ok(tags);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(tags));
     }
 
     /**
      * 获取没有关联任何题目的标签
      */
     @GetMapping("/tags/orphan")
-    public ResponseEntity<List<TagDTO>> getOrphanTags() {
+    public ResponseEntity<ApiSuccessResponseDTO<List<TagDTO>>> getOrphanTags() {
         List<TagDTO> tags = questionTagService.getOrphanTags();
-        return ResponseEntity.ok(tags);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(tags));
     }
 
     /**
      * 获取没有任何标签的题目
      */
     @GetMapping("/questions/untagged")
-    public ResponseEntity<List<QuestionDTO>> getUntaggedQuestions() {
+    public ResponseEntity<ApiSuccessResponseDTO<List<QuestionDTO>>> getUntaggedQuestions() {
         List<QuestionDTO> questions = questionTagService.getUntaggedQuestions();
-        return ResponseEntity.ok(questions);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(questions));
     }
 
     /**
      * 获取题目的标签数量
      */
     @GetMapping("/questions/{questionId}/tags/count")
-    public ResponseEntity<Integer> getTagCountByQuestionId(@PathVariable Long questionId) {
+    public ResponseEntity<ApiSuccessResponseDTO<Integer>> getTagCountByQuestionId(@PathVariable Long questionId) {
         int count = questionTagService.getTagCountByQuestionId(questionId);
-        return ResponseEntity.ok(count);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(count));
     }
 
     /**
      * 获取标签的题目数量
      */
     @GetMapping("/tags/{tagId}/questions/count")
-    public ResponseEntity<Integer> getQuestionCountByTagId(@PathVariable Long tagId) {
+    public ResponseEntity<ApiSuccessResponseDTO<Integer>> getQuestionCountByTagId(@PathVariable Long tagId) {
         int count = questionTagService.getQuestionCountByTagId(tagId);
-        return ResponseEntity.ok(count);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(count));
     }
 
     /**
      * 统计关联关系总数
      */
     @GetMapping("/relations/count")
-    public ResponseEntity<Long> getQuestionTagRelationCount() {
+    public ResponseEntity<ApiSuccessResponseDTO<Long>> getQuestionTagRelationCount() {
         long count = questionTagService.getQuestionTagRelationCount();
-        return ResponseEntity.ok(count);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(count));
     }
 
     /**
      * 检查题目是否已有某个标签
      */
     @GetMapping("/questions/{questionId}/tags/{tagId}/exists")
-    public ResponseEntity<Boolean> hasTag(@PathVariable Long questionId, @PathVariable Long tagId) {
+    public ResponseEntity<ApiSuccessResponseDTO<Boolean>> hasTag(@PathVariable Long questionId, @PathVariable Long tagId) {
         boolean exists = questionTagService.hasTag(questionId, tagId);
-        return ResponseEntity.ok(exists);
+        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(exists));
     }
 
     /**
@@ -254,94 +274,14 @@ public class QuestionTagController {
     public ResponseEntity<?> cleanupOrphanTags() {
         try {
             int deletedCount = questionTagService.cleanupOrphanTags();
-            return ResponseEntity.ok(new CleanupResponse("孤立标签清理完成", deletedCount));
+            CleanupResponseDTO response = CleanupResponseDTO.builder()
+                    .message("孤立标签清理完成")
+                    .deletedCount(deletedCount)
+                    .operation("cleanup_orphan_tags");
+            return ResponseEntity.ok(response);
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
-        }
-    }
-
-    /**
-     * 标签名称请求DTO
-     */
-    public static class TagNameRequest {
-        private String name;
-
-        public TagNameRequest() {
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public void setName(String name) {
-            this.name = name;
-        }
-    }
-
-    /**
-     * 清理响应DTO
-     */
-    public static class CleanupResponse {
-        private String message;
-        private int deletedCount;
-
-        public CleanupResponse(String message, int deletedCount) {
-            this.message = message;
-            this.deletedCount = deletedCount;
-        }
-
-        public String getMessage() {
-            return message;
-        }
-
-        public void setMessage(String message) {
-            this.message = message;
-        }
-
-        public int getDeletedCount() {
-            return deletedCount;
-        }
-
-        public void setDeletedCount(int deletedCount) {
-            this.deletedCount = deletedCount;
-        }
-    }
-
-    /**
-     * 错误响应DTO
-     */
-    public static class ErrorResponse {
-        private String error;
-
-        public ErrorResponse(String error) {
-            this.error = error;
-        }
-
-        public String getError() {
-            return error;
-        }
-
-        public void setError(String error) {
-            this.error = error;
-        }
-    }
-
-    /**
-     * 成功响应DTO
-     */
-    public static class SuccessResponse {
-        private String message;
-
-        public SuccessResponse(String message) {
-            this.message = message;
-        }
-
-        public String getMessage() {
-            return message;
-        }
-
-        public void setMessage(String message) {
-            this.message = message;
+            return ResponseEntity.badRequest()
+                    .body(new ApiErrorResponseDTO(e.getMessage(), "CLEANUP_ORPHAN_TAGS_ERROR"));
         }
     }
 }

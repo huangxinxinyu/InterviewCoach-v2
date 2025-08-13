@@ -3,15 +3,16 @@ package com.xinyu.InterviewCoach_v2.service;
 import com.xinyu.InterviewCoach_v2.dto.QuestionDTO;
 import com.xinyu.InterviewCoach_v2.entity.Question;
 import com.xinyu.InterviewCoach_v2.mapper.QuestionMapper;
+import com.xinyu.InterviewCoach_v2.util.DTOConverter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
- * 题目业务逻辑层
+ * 题目业务逻辑层 - 改进后使用DTOConverter
  */
 @Service
 public class QuestionService {
@@ -19,9 +20,13 @@ public class QuestionService {
     @Autowired
     private QuestionMapper questionMapper;
 
+    @Autowired
+    private DTOConverter dtoConverter;
+
     /**
      * 创建新题目
      */
+    @Transactional
     public QuestionDTO createQuestion(QuestionDTO questionDTO) {
         // 验证输入
         if (!questionDTO.isValid()) {
@@ -34,12 +39,12 @@ public class QuestionService {
             throw new RuntimeException("该题目已存在");
         }
 
-        Question question = new Question();
+        Question question = dtoConverter.convertFromQuestionDTO(questionDTO);
         question.setText(processedText);
 
         int result = questionMapper.insert(question);
         if (result > 0) {
-            return convertToDTO(question);
+            return dtoConverter.convertToQuestionDTO(question);
         } else {
             throw new RuntimeException("创建题目失败");
         }
@@ -49,16 +54,16 @@ public class QuestionService {
      * 根据ID查询题目
      */
     public Optional<QuestionDTO> getQuestionById(Long id) {
-        return questionMapper.findById(id).map(this::convertToDTO);
+        return questionMapper.findById(id)
+                .map(dtoConverter::convertToQuestionDTO);
     }
 
     /**
      * 查询所有题目
      */
     public List<QuestionDTO> getAllQuestions() {
-        return questionMapper.findAll().stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        List<Question> questions = questionMapper.findAll();
+        return dtoConverter.convertToQuestionDTOList(questions);
     }
 
     /**
@@ -68,9 +73,8 @@ public class QuestionService {
         if (keyword == null || keyword.trim().isEmpty()) {
             return getAllQuestions();
         }
-        return questionMapper.findByKeyword(keyword.trim()).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        List<Question> questions = questionMapper.findByKeyword(keyword.trim());
+        return dtoConverter.convertToQuestionDTOList(questions);
     }
 
     /**
@@ -81,14 +85,14 @@ public class QuestionService {
         if (size < 1) size = 10;
 
         int offset = (page - 1) * size;
-        return questionMapper.findWithPagination(size, offset).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        List<Question> questions = questionMapper.findWithPagination(size, offset);
+        return dtoConverter.convertToQuestionDTOList(questions);
     }
 
     /**
      * 更新题目
      */
+    @Transactional
     public QuestionDTO updateQuestion(Long id, QuestionDTO questionDTO) {
         // 验证输入
         if (!questionDTO.isValid()) {
@@ -108,12 +112,12 @@ public class QuestionService {
             throw new RuntimeException("该题目内容已存在");
         }
 
-        Question question = existing;
-        question.setText(processedText);
+        // 更新题目内容
+        existing.setText(processedText);
 
-        int result = questionMapper.update(question);
+        int result = questionMapper.update(existing);
         if (result > 0) {
-            return convertToDTO(question);
+            return dtoConverter.convertToQuestionDTO(existing);
         } else {
             throw new RuntimeException("更新题目失败");
         }
@@ -122,6 +126,7 @@ public class QuestionService {
     /**
      * 删除题目
      */
+    @Transactional
     public boolean deleteQuestion(Long id) {
         if (!questionMapper.findById(id).isPresent()) {
             throw new RuntimeException("题目不存在");
@@ -151,9 +156,8 @@ public class QuestionService {
      */
     public List<QuestionDTO> getLatestQuestions(int limit) {
         if (limit < 1) limit = 10;
-        return questionMapper.findLatest(limit).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        List<Question> questions = questionMapper.findLatest(limit);
+        return dtoConverter.convertToQuestionDTOList(questions);
     }
 
     /**
@@ -161,9 +165,8 @@ public class QuestionService {
      */
     public List<QuestionDTO> getRandomQuestions(int limit) {
         if (limit < 1) limit = 10;
-        return questionMapper.findRandom(limit).stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
+        List<Question> questions = questionMapper.findRandom(limit);
+        return dtoConverter.convertToQuestionDTOList(questions);
     }
 
     /**
@@ -174,17 +177,5 @@ public class QuestionService {
             return false;
         }
         return questionMapper.existsByText(text.trim());
-    }
-
-    /**
-     * 将Question实体转换为QuestionDTO
-     */
-    private QuestionDTO convertToDTO(Question question) {
-        return new QuestionDTO(
-                question.getId(),
-                question.getText(),
-                question.getCreatedAt(),
-                question.getUpdatedAt()
-        );
     }
 }

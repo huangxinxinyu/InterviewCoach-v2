@@ -1,6 +1,10 @@
 package com.xinyu.InterviewCoach_v2.service;
 
 import com.xinyu.InterviewCoach_v2.dto.*;
+import com.xinyu.InterviewCoach_v2.dto.request.chat.SendMessageRequestDTO;
+import com.xinyu.InterviewCoach_v2.dto.request.chat.StartSessionRequestDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.chat.ChatResponseDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.chat.SessionResponseDTO;
 import com.xinyu.InterviewCoach_v2.entity.Message;
 import com.xinyu.InterviewCoach_v2.entity.Question;
 import com.xinyu.InterviewCoach_v2.entity.Session;
@@ -11,6 +15,7 @@ import com.xinyu.InterviewCoach_v2.mapper.MessageMapper;
 import com.xinyu.InterviewCoach_v2.mapper.QuestionMapper;
 import com.xinyu.InterviewCoach_v2.mapper.SessionMapper;
 import com.xinyu.InterviewCoach_v2.mapper.UserAttemptMapper;
+import com.xinyu.InterviewCoach_v2.util.DTOConverter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
@@ -22,7 +27,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 核心对话服务 - 处理AI面试对话和状态控制
+ * 核心对话服务 - 更新后使用新的DTO结构
  */
 @Service
 public class ChatService {
@@ -43,6 +48,9 @@ public class ChatService {
     private SessionService sessionService;
 
     @Autowired
+    private DTOConverter dtoConverter;
+
+    @Autowired
     private QuestionSetService questionSetService;
 
     @Value("${openai.api.key}")
@@ -60,31 +68,31 @@ public class ChatService {
     private final Map<Long, List<Long>> sessionQuestionQueues = new HashMap<>();
 
     /**
-     * 启动新的面试会话
+     * 启动新的面试会话 - 使用新的DTO
      */
     @Transactional
-    public SessionResponse startSession(Long userId, StartSessionRequest request) {
+    public SessionResponseDTO startSessionWithNewDTO(Long userId, StartSessionRequestDTO request) {
         try {
             // 验证请求
-            validateStartSessionRequest(request);
+            if (!request.isValid()) {
+                return SessionResponseDTO.builder()
+                        .success(false)
+                        .message("请求参数无效");
+            }
 
             // 结束用户所有活跃会话
             sessionService.endAllActiveSessionsByUserId(userId);
-
-            // 获取实际的题目数量
-            Integer actualQuestionCount = getActualQuestionCount(request);
 
             // 创建新会话
             SessionDTO session = sessionService.createSession(
                     userId,
                     request.getMode(),
-                    actualQuestionCount
+                    request.getExpectedQuestionCount()
             );
 
             // 为 structured_set 模式初始化题目队列
             if (request.getMode() == SessionMode.STRUCTURED_SET) {
-                List<Long> questionIds = getQuestionIdsForStructuredSet(request);
-                initQuestionQueue(session.getId(), questionIds);
+                initQuestionQueue(session.getId(), request.getQuestionIds());
             }
 
             // 发送开场白和第一题
@@ -94,94 +102,71 @@ public class ChatService {
             // 更新已提问数量
             sessionService.incrementAskedQuestionCount(session.getId());
 
-            return new SessionResponse(
-                    true,
-                    session,
-                    InterviewState.WAITING_FOR_USER_ANSWER,
-                    true
-            );
+            return SessionResponseDTO.builder()
+                    .success(true)
+                    .session(session)
+                    .currentState(InterviewState.WAITING_FOR_USER_ANSWER)
+                    .chatInputEnabled(true);
 
         } catch (Exception e) {
-            return new SessionResponse(false, "启动面试失败: " + e.getMessage());
+            return SessionResponseDTO.builder()
+                    .success(false)
+                    .message("启动面试失败: " + e.getMessage());
         }
     }
 
     /**
-     * 获取实际的题目数量
-     */
-    private Integer getActualQuestionCount(StartSessionRequest request) {
-        switch (request.getMode()) {
-            case STRUCTURED_SET:
-                // 对于题集模式，使用题集中的实际题目数量
-                if (request.getQuestionSetId() != null) {
-                    List<Long> questionIds = questionSetService.getQuestionIdsBySetId(request.getQuestionSetId());
-                    return questionIds.size();
-                } else if (request.getQuestionIds() != null) {
-                    return request.getQuestionIds().size();
-                } else {
-                    throw new IllegalArgumentException("结构化题集模式需要指定题集ID或题目ID列表");
-                }
-            case SINGLE_TOPIC:
-            case STRUCTURED_TEMPLATE:
-                // 其他模式使用用户指定的数量
-                return request.getExpectedQuestionCount();
-            default:
-                throw new IllegalArgumentException("不支持的会话模式");
-        }
-    }
-
-
-    /**
-     * 处理用户消息并生成AI回复
+     * 处理用户消息并生成AI回复 - 使用新的DTO
      */
     @Transactional
-    public ChatResponse processUserMessage(Long userId, Long sessionId, SendMessageRequest request) {
+    public ChatResponseDTO processUserMessageWithNewDTO(Long userId, Long sessionId, SendMessageRequestDTO request) {
         try {
             // 验证会话
             if (!sessionService.validateSessionOwnership(sessionId, userId)) {
-                return new ChatResponse(false, "无权访问此会话");
+                return ChatResponseDTO.builder()
+                        .success(false)
+                        .message("无权访问此会话");
             }
 
             if (!sessionService.isSessionActive(sessionId)) {
-                return new ChatResponse(false, "会话已结束");
+                return ChatResponseDTO.builder()
+                        .success(false)
+                        .message("会话已结束");
+            }
+
+            // 验证消息内容
+            if (!request.isValid()) {
+                return ChatResponseDTO.builder()
+                        .success(false)
+                        .message("消息内容不能为空");
             }
 
             // 保存用户消息
-            saveUserMessage(sessionId, request.getText());
+            saveUserMessage(sessionId, request.getProcessedText());
 
             // 推断当前面试状态
             InterviewState currentState = inferInterviewState(sessionId);
 
             // 根据状态处理用户回答
-            return handleUserResponse(sessionId, request.getText(), currentState);
+            return handleUserResponseWithNewDTO(sessionId, request.getProcessedText(), currentState);
 
         } catch (Exception e) {
-            return new ChatResponse(false, "处理消息失败: " + e.getMessage());
+            return ChatResponseDTO.builder()
+                    .success(false)
+                    .message("处理消息失败: " + e.getMessage());
         }
     }
 
     /**
-     * 获取会话消息历史
-     */
-    public List<MessageDTO> getSessionMessages(Long userId, Long sessionId) {
-        // 验证会话所有权
-        if (!sessionService.validateSessionOwnership(sessionId, userId)) {
-            throw new RuntimeException("无权访问此会话");
-        }
-
-        return messageMapper.findBySessionId(sessionId).stream()
-                .map(this::convertMessageToDTO)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * 结束面试会话
+     * 结束面试会话 - 使用新的DTO
      */
     @Transactional
-    public ChatResponse endSession(Long userId, Long sessionId) {
+    public ChatResponseDTO endSessionWithNewDTO(Long userId, Long sessionId) {
         try {
             if (!sessionService.validateSessionOwnership(sessionId, userId)) {
-                return new ChatResponse(false, "无权访问此会话");
+                return ChatResponseDTO.builder()
+                        .success(false)
+                        .message("无权访问此会话");
             }
 
             // 生成结束语
@@ -194,24 +179,101 @@ public class ChatService {
             // 清理题目队列
             sessionQuestionQueues.remove(sessionId);
 
-            return new ChatResponse(
-                    true,
-                    aiMessage,
-                    InterviewState.SESSION_ENDED,
-                    false
-            );
+            return ChatResponseDTO.builder()
+                    .success(true)
+                    .aiMessage(aiMessage)
+                    .currentState(InterviewState.SESSION_ENDED)
+                    .chatInputEnabled(false);
 
         } catch (Exception e) {
-            return new ChatResponse(false, "结束会话失败: " + e.getMessage());
+            return ChatResponseDTO.builder()
+                    .success(false)
+                    .message("结束会话失败: " + e.getMessage());
         }
     }
+
+    /**
+     * 兼容旧版本的启动会话方法
+     */
+    @Transactional
+    public SessionResponse startSession(Long userId, StartSessionRequest request) {
+        // 转换为新的DTO
+        StartSessionRequestDTO newRequest = new StartSessionRequestDTO();
+        newRequest.setMode(request.getMode());
+        newRequest.setExpectedQuestionCount(request.getExpectedQuestionCount());
+        newRequest.setTagId(request.getTagId());
+        newRequest.setQuestionIds(request.getQuestionIds());
+
+        // 调用新的方法
+        SessionResponseDTO newResponse = startSessionWithNewDTO(userId, newRequest);
+
+        // 转换回旧的响应格式
+        return new SessionResponse(
+                newResponse.isSuccess(),
+                newResponse.getSession(),
+                newResponse.getCurrentState(),
+                newResponse.isChatInputEnabled()
+        );
+    }
+
+    /**
+     * 兼容旧版本的处理用户消息方法
+     */
+    @Transactional
+    public ChatResponse processUserMessage(Long userId, Long sessionId, SendMessageRequest request) {
+        // 转换为新的DTO
+        SendMessageRequestDTO newRequest = new SendMessageRequestDTO();
+        newRequest.setText(request.getText());
+
+        // 调用新的方法
+        ChatResponseDTO newResponse = processUserMessageWithNewDTO(userId, sessionId, newRequest);
+
+        // 转换回旧的响应格式
+        return new ChatResponse(
+                newResponse.isSuccess(),
+                newResponse.getAiMessage(),
+                newResponse.getCurrentState(),
+                newResponse.isChatInputEnabled()
+        );
+    }
+
+    /**
+     * 兼容旧版本的结束会话方法
+     */
+    @Transactional
+    public ChatResponse endSession(Long userId, Long sessionId) {
+        // 调用新的方法
+        ChatResponseDTO newResponse = endSessionWithNewDTO(userId, sessionId);
+
+        // 转换回旧的响应格式
+        return new ChatResponse(
+                newResponse.isSuccess(),
+                newResponse.getAiMessage(),
+                newResponse.getCurrentState(),
+                newResponse.isChatInputEnabled()
+        );
+    }
+
+    /**
+     * 获取会话消息历史
+     */
+    public List<MessageDTO> getSessionMessages(Long userId, Long sessionId) {
+        // 验证会话所有权
+        if (!sessionService.validateSessionOwnership(sessionId, userId)) {
+            throw new RuntimeException("无权访问此会话");
+        }
+
+        return messageMapper.findBySessionId(sessionId).stream()
+                .map(dtoConverter::convertToMessageDTO)
+                .collect(Collectors.toList());
+    }
+
 
     /**
      * 为 structured_set 模式初始化题目队列
      */
     private void initQuestionQueue(Long sessionId, List<Long> questionIds) {
         if (questionIds != null && !questionIds.isEmpty()) {
-            // 创建题目队列的副本，避免修改原始列表
             List<Long> queue = new ArrayList<>(questionIds);
             sessionQuestionQueues.put(sessionId, queue);
         }
@@ -230,31 +292,24 @@ public class ChatService {
 
         Session session = sessionOpt.get();
 
-        // 如果没有消息，说明面试刚开始
         if (messages.isEmpty()) {
             return InterviewState.STARTED;
         }
 
-        // 检查是否已完成所有题目
         if (session.isCompleted()) {
             return InterviewState.INTERVIEW_COMPLETED;
         }
 
-        // 分析最后几条消息的模式
         Message lastMessage = messages.get(messages.size() - 1);
 
-        // 如果最后一条消息是用户消息，说明等待AI分析和反馈
         if (lastMessage.getType() == MessageType.USER) {
             return InterviewState.AI_ANALYZING;
         }
 
-        // 如果最后一条是AI消息，需要判断是反馈还是新题目
         if (lastMessage.getType() == MessageType.AI) {
-            // 简单判断：如果AI消息包含问号，可能是新题目
             if (lastMessage.getText().contains("?") || lastMessage.getText().contains("？")) {
                 return InterviewState.WAITING_FOR_USER_ANSWER;
             } else {
-                // 可能是反馈，准备下一题
                 return InterviewState.AI_FEEDBACK;
             }
         }
@@ -263,17 +318,19 @@ public class ChatService {
     }
 
     /**
-     * 处理用户回答
+     * 处理用户回答 - 使用新的DTO
      */
-    private ChatResponse handleUserResponse(Long sessionId, String userAnswer, InterviewState state) {
+    private ChatResponseDTO handleUserResponseWithNewDTO(Long sessionId, String userAnswer, InterviewState state) {
         Optional<Session> sessionOpt = sessionMapper.findById(sessionId);
         if (sessionOpt.isEmpty()) {
-            return new ChatResponse(false, "会话不存在");
+            return ChatResponseDTO.builder()
+                    .success(false)
+                    .message("会话不存在");
         }
 
         Session session = sessionOpt.get();
 
-        // 记录用户答题尝试（这里需要从上下文推断当前题目）
+        // 记录用户答题尝试
         recordUserAttempt(session.getUserId(), sessionId);
 
         // 增加已完成题目数量
@@ -291,12 +348,11 @@ public class ChatService {
             // 清理题目队列
             sessionQuestionQueues.remove(sessionId);
 
-            return new ChatResponse(
-                    true,
-                    aiMessage,
-                    InterviewState.INTERVIEW_COMPLETED,
-                    false
-            );
+            return ChatResponseDTO.builder()
+                    .success(true)
+                    .aiMessage(aiMessage)
+                    .currentState(InterviewState.INTERVIEW_COMPLETED)
+                    .chatInputEnabled(false);
         } else {
             // 生成反馈并提出下一题
             String feedbackAndNextQuestion = generateFeedbackAndNextQuestion(sessionId, userAnswer);
@@ -305,19 +361,18 @@ public class ChatService {
             // 增加已提问数量
             sessionService.incrementAskedQuestionCount(sessionId);
 
-            return new ChatResponse(
-                    true,
-                    aiMessage,
-                    InterviewState.WAITING_FOR_USER_ANSWER,
-                    true
-            );
+            return ChatResponseDTO.builder()
+                    .success(true)
+                    .aiMessage(aiMessage)
+                    .currentState(InterviewState.WAITING_FOR_USER_ANSWER)
+                    .chatInputEnabled(true);
         }
     }
 
     /**
      * 生成第一个问题
      */
-    private String generateFirstQuestion(Long sessionId, StartSessionRequest request) {
+    private String generateFirstQuestion(Long sessionId, StartSessionRequestDTO request) {
         Question selectedQuestion = selectQuestion(sessionId, request);
 
         if (selectedQuestion == null) {
@@ -325,14 +380,13 @@ public class ChatService {
         }
 
         String prompt = buildFirstQuestionPrompt(request.getMode(), selectedQuestion);
-        System.out.println(prompt);
         return callOpenAI(prompt);
     }
 
     /**
      * 选择题目的策略
      */
-    private Question selectQuestion(Long sessionId, StartSessionRequest request) {
+    private Question selectQuestion(Long sessionId, StartSessionRequestDTO request) {
         Optional<Session> sessionOpt = sessionMapper.findById(sessionId);
         if (sessionOpt.isEmpty()) {
             return null;
@@ -362,26 +416,23 @@ public class ChatService {
             return null;
         }
 
-        // 从队列头部取出一个题目ID
         Long questionId = queue.remove(0);
         return questionMapper.findById(questionId).orElse(null);
     }
 
     /**
-     * 根据标签选择题目（优先级：未尝试 > 尝试次数少 > 随机）
+     * 根据标签选择题目
      */
     private Question selectQuestionByTag(Long userId, Long tagId) {
         if (tagId == null) {
             return null;
         }
 
-        // 优先选择未尝试过的题目
         List<Question> untriedQuestions = userAttemptMapper.findUntriedQuestionsByTagId(userId, tagId);
         if (!untriedQuestions.isEmpty()) {
             return untriedQuestions.get(0);
         }
 
-        // 选择尝试次数最少的题目
         List<Question> leastAttempted = userAttemptMapper.findLeastAttemptedQuestionsByTagId(userId, tagId, 5);
         if (!leastAttempted.isEmpty()) {
             return leastAttempted.get(new Random().nextInt(leastAttempted.size()));
@@ -391,22 +442,9 @@ public class ChatService {
     }
 
     /**
-     * 从题集中选择题目（废弃的方法，现在使用队列）
-     */
-    private Question selectQuestionFromSet(List<Long> questionIds) {
-        if (questionIds == null || questionIds.isEmpty()) {
-            return null;
-        }
-
-        Long questionId = questionIds.get(0); // 简单实现：选择第一个
-        return questionMapper.findById(questionId).orElse(null);
-    }
-
-    /**
      * 根据模板选择题目
      */
     private Question selectQuestionByTemplate(Long userId) {
-        // 简单实现：随机选择一个题目
         List<Question> allQuestions = questionMapper.findRandom(10);
         return allQuestions.isEmpty() ? null : allQuestions.get(0);
     }
@@ -415,7 +453,6 @@ public class ChatService {
      * 记录用户答题尝试
      */
     private void recordUserAttempt(Long userId, Long sessionId) {
-        // 这里需要从会话上下文中推断当前题目ID
         // 简化实现：可以在Message中存储额外信息或者通过其他方式关联
         // 暂时跳过具体实现
     }
@@ -427,7 +464,6 @@ public class ChatService {
         StringBuilder prompt = new StringBuilder();
         prompt.append("你是一个专业的面试官，正在进行技术面试。");
 
-        // 根据模式添加不同的背景描述
         switch (mode) {
             case SINGLE_TOPIC:
                 prompt.append("本次面试将围绕特定主题进行。");
@@ -451,11 +487,9 @@ public class ChatService {
      * 生成反馈和下一题
      */
     private String generateFeedbackAndNextQuestion(Long sessionId, String userAnswer) {
-        // 获取下一个题目
         Question nextQuestion = getNextQuestion(sessionId);
 
         if (nextQuestion == null) {
-            // 如果没有下一题，说明题目已经用完，提前结束面试
             return generateFinalEvaluation(sessionId, userAnswer);
         }
 
@@ -482,7 +516,6 @@ public class ChatService {
 
         Session session = sessionOpt.get();
 
-        // 根据会话模式选择下一题
         switch (session.getMode()) {
             case SINGLE_TOPIC:
                 return getNextQuestionByTag(session);
@@ -506,17 +539,7 @@ public class ChatService {
      * 根据标签获取下一题
      */
     private Question getNextQuestionByTag(Session session) {
-        // 简化实现：随机选择一个该标签下的题目
-        // 实际应该基于用户答题历史进行智能选择
         return selectQuestionByTag(session.getUserId(), 1L); // 假设tagId为1
-    }
-
-    /**
-     * 从题集获取下一题（废弃的方法）
-     */
-    private Question getNextQuestionFromSet(Session session) {
-        // 简化实现：根据已提问数量获取题集中的下一题
-        return questionMapper.findRandom(1).stream().findFirst().orElse(null);
     }
 
     /**
@@ -610,7 +633,7 @@ public class ChatService {
     private MessageDTO saveAIMessage(Long sessionId, String text) {
         Message message = new Message(sessionId, MessageType.AI, text);
         messageMapper.insert(message);
-        return convertMessageToDTO(message);
+        return dtoConverter.convertMessageToDTO(message);
     }
 
     /**
@@ -619,78 +642,6 @@ public class ChatService {
     private MessageDTO saveUserMessage(Long sessionId, String text) {
         Message message = new Message(sessionId, MessageType.USER, text);
         messageMapper.insert(message);
-        return convertMessageToDTO(message);
-    }
-
-    /**
-     * 获取结构化题集模式的题目ID列表
-     */
-    private List<Long> getQuestionIdsForStructuredSet(StartSessionRequest request) {
-        List<Long> questionIds;
-
-        // 优先使用 questionSetId
-        if (request.getQuestionSetId() != null) {
-            questionIds = questionSetService.getQuestionIdsBySetId(request.getQuestionSetId());
-            if (questionIds.isEmpty()) {
-                throw new IllegalArgumentException("题集ID " + request.getQuestionSetId() + " 中没有题目");
-            }
-        }
-        // 如果没有 questionSetId，使用直接提供的 questionIds（向后兼容）
-        else if (request.getQuestionIds() != null && !request.getQuestionIds().isEmpty()) {
-            questionIds = request.getQuestionIds();
-        }
-        else {
-            throw new IllegalArgumentException("结构化题集模式需要指定题集ID或题目ID列表");
-        }
-
-        return questionIds;
-    }
-
-    /**
-     * 验证启动会话请求
-     */
-    private void validateStartSessionRequest(StartSessionRequest request) {
-        if (request.getMode() == null) {
-            throw new IllegalArgumentException("会话模式不能为空");
-        }
-
-        switch (request.getMode()) {
-            case SINGLE_TOPIC:
-                if (request.getTagId() == null) {
-                    throw new IllegalArgumentException("单主题模式需要指定标签ID");
-                }
-                if (request.getExpectedQuestionCount() == null || request.getExpectedQuestionCount() < 1 || request.getExpectedQuestionCount() > 10) {
-                    throw new IllegalArgumentException("单主题模式的期望题目数量必须在1-10之间");
-                }
-                break;
-
-            case STRUCTURED_TEMPLATE:
-                if (request.getExpectedQuestionCount() == null || request.getExpectedQuestionCount() < 1 || request.getExpectedQuestionCount() > 10) {
-                    throw new IllegalArgumentException("结构化模板模式的期望题目数量必须在1-10之间");
-                }
-                break;
-
-            case STRUCTURED_SET:
-                // 必须提供 questionSetId 或 questionIds 其中之一
-                if (request.getQuestionSetId() == null &&
-                        (request.getQuestionIds() == null || request.getQuestionIds().isEmpty())) {
-                    throw new IllegalArgumentException("结构化题集模式需要指定题集ID或题目ID列表");
-                }
-                // STRUCTURED_SET 模式不需要验证 expectedQuestionCount，因为使用题集的实际题目数量
-                break;
-        }
-    }
-
-    /**
-     * 将Message实体转换为MessageDTO
-     */
-    private MessageDTO convertMessageToDTO(Message message) {
-        return new MessageDTO(
-                message.getId(),
-                message.getSessionId(),
-                message.getType(),
-                message.getText(),
-                message.getCreatedAt()
-        );
+        return dtoConverter.convertMessageToDTO(message);
     }
 }
