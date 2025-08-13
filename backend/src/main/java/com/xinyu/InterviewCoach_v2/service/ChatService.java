@@ -26,7 +26,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 核心对话服务 - 重构后使用统一的DTO结构
+ * 核心对话服务 - 重构后使用统一的DTO结构，添加 UserAttempt 记录
  */
 @Service
 public class ChatService {
@@ -53,6 +53,9 @@ public class ChatService {
     private TemplateService templateService;
 
     @Autowired
+    private UserAttemptService userAttemptService;
+
+    @Autowired
     private DTOConverter dtoConverter;
 
     @Autowired
@@ -71,6 +74,9 @@ public class ChatService {
 
     // 为 structured_set 模式存储题目队列
     private final Map<Long, List<Long>> sessionQuestionQueues = new HashMap<>();
+
+    // 添加当前题目跟踪 - 记录每个会话当前正在问的题目ID
+    private final Map<Long, Long> sessionCurrentQuestions = new HashMap<>();
 
     /**
      * 启动新的面试会话
@@ -109,9 +115,19 @@ public class ChatService {
                 initTemplateQuestionQueue(session.getId(), request.getTemplateId(), userId);
             }
 
+            // 选择第一个题目并记录
+            Question firstQuestion = selectQuestion(session.getId(), request);
+            if (firstQuestion != null) {
+                // 记录当前题目
+                sessionCurrentQuestions.put(session.getId(), firstQuestion.getId());
+
+                // 记录用户开始尝试此题目
+                userAttemptService.recordAttempt(userId, firstQuestion.getId());
+            }
+
             // 发送开场白和第一题
-            String firstQuestion = generateFirstQuestion(session.getId(), request);
-            MessageDTO aiMessage = saveAIMessage(session.getId(), firstQuestion);
+            String firstQuestionText = generateFirstQuestion(session.getId(), request);
+            MessageDTO aiMessage = saveAIMessage(session.getId(), firstQuestionText);
 
             // 更新已提问数量
             sessionService.incrementAskedQuestionCount(session.getId());
@@ -147,7 +163,6 @@ public class ChatService {
                         .success(false)
                         .message("会话已结束");
             }
-
 
             // 验证消息内容
             if (!request.isValid()) {
@@ -191,8 +206,9 @@ public class ChatService {
             // 结束会话
             sessionService.endSession(sessionId);
 
-            // 清理题目队列
+            // 清理题目队列和当前题目记录
             sessionQuestionQueues.remove(sessionId);
+            sessionCurrentQuestions.remove(sessionId);
 
             return ChatMessageResponseDTO.builder()
                     .success(true)
@@ -220,7 +236,6 @@ public class ChatService {
                 .map(dtoConverter::convertToMessageDTO)
                 .collect(Collectors.toList());
     }
-
 
     /**
      * 为 structured_set 模式初始化题目队列
@@ -308,9 +323,7 @@ public class ChatService {
         }
 
         Session session = sessionOpt.get();
-
-        // 记录用户答题尝试
-        recordUserAttempt(session.getUserId(), sessionId);
+        Long userId = session.getUserId();
 
         // 增加已完成题目数量
         sessionService.incrementCompletedQuestionCount(sessionId);
@@ -324,8 +337,9 @@ public class ChatService {
             // 结束会话
             sessionService.endSession(sessionId);
 
-            // 清理题目队列
+            // 清理题目队列和当前题目记录
             sessionQuestionQueues.remove(sessionId);
+            sessionCurrentQuestions.remove(sessionId);
 
             return ChatMessageResponseDTO.builder()
                     .success(true)
@@ -333,6 +347,16 @@ public class ChatService {
                     .currentState(InterviewState.INTERVIEW_COMPLETED)
                     .chatInputEnabled(false);
         } else {
+            // 选择下一题
+            Question nextQuestion = getNextQuestion(sessionId);
+            if (nextQuestion != null) {
+                // 记录当前题目
+                sessionCurrentQuestions.put(sessionId, nextQuestion.getId());
+
+                // 记录用户开始尝试新题目
+                userAttemptService.recordAttempt(userId, nextQuestion.getId());
+            }
+
             // 生成反馈并提出下一题
             String feedbackAndNextQuestion = generateFeedbackAndNextQuestion(sessionId, userAnswer);
             MessageDTO aiMessage = saveAIMessage(sessionId, feedbackAndNextQuestion);
@@ -427,14 +451,6 @@ public class ChatService {
     private Question selectQuestionByTemplate(Long userId) {
         List<Question> allQuestions = questionMapper.findRandom(10);
         return allQuestions.isEmpty() ? null : allQuestions.get(0);
-    }
-
-    /**
-     * 记录用户答题尝试
-     */
-    private void recordUserAttempt(Long userId, Long sessionId) {
-        // 简化实现：可以在Message中存储额外信息或者通过其他方式关联
-        // 暂时跳过具体实现
     }
 
     /**

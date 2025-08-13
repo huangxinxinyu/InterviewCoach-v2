@@ -195,6 +195,33 @@ public class DTOConverter {
     }
 
     /**
+     * 将UserAttempt实体转换为UserAttemptDTO
+     */
+    public UserAttemptDTO convertToUserAttemptDTO(UserAttempt userAttempt) {
+        if (userAttempt == null) {
+            return null;
+        }
+        return new UserAttemptDTO(
+                userAttempt.getUserId(),
+                userAttempt.getQuestionId(),
+                userAttempt.getAttemptNumber(),
+                userAttempt.getUpdatedAt()
+        );
+    }
+
+    /**
+     * 批量转换UserAttempt实体列表为UserAttemptDTO列表
+     */
+    public List<UserAttemptDTO> convertToUserAttemptDTOList(List<UserAttempt> userAttempts) {
+        if (userAttempts == null) {
+            return null;
+        }
+        return userAttempts.stream()
+                .map(this::convertToUserAttemptDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
      * 从UserDTO创建User实体（用于新建用户）
      */
     public User convertFromUserDTO(UserDTO userDTO) {
@@ -244,7 +271,6 @@ public class DTOConverter {
                 template.getUpdatedAt()
         );
     }
-
 
     /**
      * 为UserDTO清除敏感信息
