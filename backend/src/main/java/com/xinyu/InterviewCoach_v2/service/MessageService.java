@@ -1,11 +1,9 @@
 package com.xinyu.InterviewCoach_v2.service;
 
-import com.xinyu.InterviewCoach_v2.dto.MessageDTO;
+import com.xinyu.InterviewCoach_v2.dto.core.MessageDTO;
 import com.xinyu.InterviewCoach_v2.entity.Message;
-import com.xinyu.InterviewCoach_v2.entity.UserAttempt;
 import com.xinyu.InterviewCoach_v2.enums.MessageType;
 import com.xinyu.InterviewCoach_v2.mapper.MessageMapper;
-import com.xinyu.InterviewCoach_v2.mapper.UserAttemptMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

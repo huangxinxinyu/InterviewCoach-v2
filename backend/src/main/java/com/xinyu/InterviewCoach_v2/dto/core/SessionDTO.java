@@ -1,15 +1,13 @@
-package com.xinyu.InterviewCoach_v2.dto;
+package com.xinyu.InterviewCoach_v2.dto.core;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.xinyu.InterviewCoach_v2.enums.InterviewState;
-import com.xinyu.InterviewCoach_v2.enums.MessageType;
 import com.xinyu.InterviewCoach_v2.enums.SessionMode;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 /**
- * 会话DTO
+ * 会话DTO - 移动到core包
  */
 public class SessionDTO {
     private Long id;
@@ -75,4 +73,3 @@ public class SessionDTO {
     public InterviewState getCurrentState() { return currentState; }
     public void setCurrentState(InterviewState currentState) { this.currentState = currentState; }
 }
-

@@ -1,6 +1,10 @@
 package com.xinyu.InterviewCoach_v2.util;
 
-import com.xinyu.InterviewCoach_v2.dto.*;
+import com.xinyu.InterviewCoach_v2.dto.QuestionDTO;
+import com.xinyu.InterviewCoach_v2.dto.QuestionSetDTO;
+import com.xinyu.InterviewCoach_v2.dto.TagDTO;
+import com.xinyu.InterviewCoach_v2.dto.UserDTO;
+import com.xinyu.InterviewCoach_v2.dto.core.*;
 import com.xinyu.InterviewCoach_v2.entity.*;
 import org.springframework.stereotype.Component;
 
@@ -8,7 +12,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * DTO转换工具类 - 统一处理实体与DTO之间的转换
+ * DTO转换工具类
  */
 @Component
 public class DTOConverter {
@@ -231,71 +235,6 @@ public class DTOConverter {
         return tag;
     }
 
-    /**
-     * 从QuestionSetDTO创建QuestionSet实体（用于新建题集）
-     */
-    public QuestionSet convertFromQuestionSetDTO(QuestionSetDTO questionSetDTO) {
-        if (questionSetDTO == null) {
-            return null;
-        }
-        QuestionSet questionSet = new QuestionSet();
-        questionSet.setName(questionSetDTO.getName());
-        questionSet.setDescription(questionSetDTO.getDescription());
-        return questionSet;
-    }
-
-    /**
-     * 更新User实体的字段（从UserDTO）
-     */
-    public void updateUserFromDTO(User user, UserDTO userDTO) {
-        if (user != null && userDTO != null) {
-            if (userDTO.getEmail() != null) {
-                user.setEmail(userDTO.getEmail());
-            }
-            if (userDTO.getPassword() != null && !userDTO.getPassword().trim().isEmpty()) {
-                user.setPassword(userDTO.getPassword());
-            }
-            if (userDTO.getRole() != null) {
-                user.setRole(userDTO.getRole());
-            }
-        }
-    }
-
-    /**
-     * 更新Question实体的字段（从QuestionDTO）
-     */
-    public void updateQuestionFromDTO(Question question, QuestionDTO questionDTO) {
-        if (question != null && questionDTO != null) {
-            if (questionDTO.getText() != null) {
-                question.setText(questionDTO.getText().trim());
-            }
-        }
-    }
-
-    /**
-     * 更新Tag实体的字段（从TagDTO）
-     */
-    public void updateTagFromDTO(Tag tag, TagDTO tagDTO) {
-        if (tag != null && tagDTO != null) {
-            if (tagDTO.getName() != null) {
-                tag.setName(tagDTO.getName().trim().toLowerCase());
-            }
-        }
-    }
-
-    /**
-     * 更新QuestionSet实体的字段（从QuestionSetDTO）
-     */
-    public void updateQuestionSetFromDTO(QuestionSet questionSet, QuestionSetDTO questionSetDTO) {
-        if (questionSet != null && questionSetDTO != null) {
-            if (questionSetDTO.getName() != null) {
-                questionSet.setName(questionSetDTO.getName());
-            }
-            if (questionSetDTO.getDescription() != null) {
-                questionSet.setDescription(questionSetDTO.getDescription());
-            }
-        }
-    }
 
     /**
      * 为UserDTO清除敏感信息

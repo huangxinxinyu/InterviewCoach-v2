@@ -1,10 +1,11 @@
 package com.xinyu.InterviewCoach_v2.service;
 
-import com.xinyu.InterviewCoach_v2.dto.*;
+import com.xinyu.InterviewCoach_v2.dto.core.MessageDTO;
+import com.xinyu.InterviewCoach_v2.dto.core.SessionDTO;
 import com.xinyu.InterviewCoach_v2.dto.request.chat.SendMessageRequestDTO;
-import com.xinyu.InterviewCoach_v2.dto.request.chat.StartSessionRequestDTO;
-import com.xinyu.InterviewCoach_v2.dto.response.chat.ChatResponseDTO;
-import com.xinyu.InterviewCoach_v2.dto.response.chat.SessionResponseDTO;
+import com.xinyu.InterviewCoach_v2.dto.request.chat.StartInterviewRequestDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.chat.ChatMessageResponseDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.chat.InterviewSessionResponseDTO;
 import com.xinyu.InterviewCoach_v2.entity.Message;
 import com.xinyu.InterviewCoach_v2.entity.Question;
 import com.xinyu.InterviewCoach_v2.entity.Session;
@@ -27,7 +28,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 核心对话服务 - 更新后使用新的DTO结构
+ * 核心对话服务 - 重构后使用统一的DTO结构
  */
 @Service
 public class ChatService {
@@ -68,14 +69,14 @@ public class ChatService {
     private final Map<Long, List<Long>> sessionQuestionQueues = new HashMap<>();
 
     /**
-     * 启动新的面试会话 - 使用新的DTO
+     * 启动新的面试会话
      */
     @Transactional
-    public SessionResponseDTO startSessionWithNewDTO(Long userId, StartSessionRequestDTO request) {
+    public InterviewSessionResponseDTO startInterview(Long userId, StartInterviewRequestDTO request) {
         try {
             // 验证请求
             if (!request.isValid()) {
-                return SessionResponseDTO.builder()
+                return InterviewSessionResponseDTO.builder()
                         .success(false)
                         .message("请求参数无效");
             }
@@ -102,41 +103,41 @@ public class ChatService {
             // 更新已提问数量
             sessionService.incrementAskedQuestionCount(session.getId());
 
-            return SessionResponseDTO.builder()
+            return InterviewSessionResponseDTO.builder()
                     .success(true)
                     .session(session)
                     .currentState(InterviewState.WAITING_FOR_USER_ANSWER)
                     .chatInputEnabled(true);
 
         } catch (Exception e) {
-            return SessionResponseDTO.builder()
+            return InterviewSessionResponseDTO.builder()
                     .success(false)
                     .message("启动面试失败: " + e.getMessage());
         }
     }
 
     /**
-     * 处理用户消息并生成AI回复 - 使用新的DTO
+     * 处理用户消息并生成AI回复
      */
     @Transactional
-    public ChatResponseDTO processUserMessageWithNewDTO(Long userId, Long sessionId, SendMessageRequestDTO request) {
+    public ChatMessageResponseDTO processUserMessage(Long userId, Long sessionId, SendMessageRequestDTO request) {
         try {
             // 验证会话
             if (!sessionService.validateSessionOwnership(sessionId, userId)) {
-                return ChatResponseDTO.builder()
+                return ChatMessageResponseDTO.builder()
                         .success(false)
                         .message("无权访问此会话");
             }
 
             if (!sessionService.isSessionActive(sessionId)) {
-                return ChatResponseDTO.builder()
+                return ChatMessageResponseDTO.builder()
                         .success(false)
                         .message("会话已结束");
             }
 
             // 验证消息内容
             if (!request.isValid()) {
-                return ChatResponseDTO.builder()
+                return ChatMessageResponseDTO.builder()
                         .success(false)
                         .message("消息内容不能为空");
             }
@@ -148,23 +149,23 @@ public class ChatService {
             InterviewState currentState = inferInterviewState(sessionId);
 
             // 根据状态处理用户回答
-            return handleUserResponseWithNewDTO(sessionId, request.getProcessedText(), currentState);
+            return handleUserResponse(sessionId, request.getProcessedText(), currentState);
 
         } catch (Exception e) {
-            return ChatResponseDTO.builder()
+            return ChatMessageResponseDTO.builder()
                     .success(false)
                     .message("处理消息失败: " + e.getMessage());
         }
     }
 
     /**
-     * 结束面试会话 - 使用新的DTO
+     * 结束面试会话
      */
     @Transactional
-    public ChatResponseDTO endSessionWithNewDTO(Long userId, Long sessionId) {
+    public ChatMessageResponseDTO endInterview(Long userId, Long sessionId) {
         try {
             if (!sessionService.validateSessionOwnership(sessionId, userId)) {
-                return ChatResponseDTO.builder()
+                return ChatMessageResponseDTO.builder()
                         .success(false)
                         .message("无权访问此会话");
             }
@@ -179,79 +180,17 @@ public class ChatService {
             // 清理题目队列
             sessionQuestionQueues.remove(sessionId);
 
-            return ChatResponseDTO.builder()
+            return ChatMessageResponseDTO.builder()
                     .success(true)
                     .aiMessage(aiMessage)
                     .currentState(InterviewState.SESSION_ENDED)
                     .chatInputEnabled(false);
 
         } catch (Exception e) {
-            return ChatResponseDTO.builder()
+            return ChatMessageResponseDTO.builder()
                     .success(false)
                     .message("结束会话失败: " + e.getMessage());
         }
-    }
-
-    /**
-     * 兼容旧版本的启动会话方法
-     */
-    @Transactional
-    public SessionResponse startSession(Long userId, StartSessionRequest request) {
-        // 转换为新的DTO
-        StartSessionRequestDTO newRequest = new StartSessionRequestDTO();
-        newRequest.setMode(request.getMode());
-        newRequest.setExpectedQuestionCount(request.getExpectedQuestionCount());
-        newRequest.setTagId(request.getTagId());
-        newRequest.setQuestionIds(request.getQuestionIds());
-
-        // 调用新的方法
-        SessionResponseDTO newResponse = startSessionWithNewDTO(userId, newRequest);
-
-        // 转换回旧的响应格式
-        return new SessionResponse(
-                newResponse.isSuccess(),
-                newResponse.getSession(),
-                newResponse.getCurrentState(),
-                newResponse.isChatInputEnabled()
-        );
-    }
-
-    /**
-     * 兼容旧版本的处理用户消息方法
-     */
-    @Transactional
-    public ChatResponse processUserMessage(Long userId, Long sessionId, SendMessageRequest request) {
-        // 转换为新的DTO
-        SendMessageRequestDTO newRequest = new SendMessageRequestDTO();
-        newRequest.setText(request.getText());
-
-        // 调用新的方法
-        ChatResponseDTO newResponse = processUserMessageWithNewDTO(userId, sessionId, newRequest);
-
-        // 转换回旧的响应格式
-        return new ChatResponse(
-                newResponse.isSuccess(),
-                newResponse.getAiMessage(),
-                newResponse.getCurrentState(),
-                newResponse.isChatInputEnabled()
-        );
-    }
-
-    /**
-     * 兼容旧版本的结束会话方法
-     */
-    @Transactional
-    public ChatResponse endSession(Long userId, Long sessionId) {
-        // 调用新的方法
-        ChatResponseDTO newResponse = endSessionWithNewDTO(userId, sessionId);
-
-        // 转换回旧的响应格式
-        return new ChatResponse(
-                newResponse.isSuccess(),
-                newResponse.getAiMessage(),
-                newResponse.getCurrentState(),
-                newResponse.isChatInputEnabled()
-        );
     }
 
     /**
@@ -318,12 +257,12 @@ public class ChatService {
     }
 
     /**
-     * 处理用户回答 - 使用新的DTO
+     * 处理用户回答
      */
-    private ChatResponseDTO handleUserResponseWithNewDTO(Long sessionId, String userAnswer, InterviewState state) {
+    private ChatMessageResponseDTO handleUserResponse(Long sessionId, String userAnswer, InterviewState state) {
         Optional<Session> sessionOpt = sessionMapper.findById(sessionId);
         if (sessionOpt.isEmpty()) {
-            return ChatResponseDTO.builder()
+            return ChatMessageResponseDTO.builder()
                     .success(false)
                     .message("会话不存在");
         }
@@ -348,7 +287,7 @@ public class ChatService {
             // 清理题目队列
             sessionQuestionQueues.remove(sessionId);
 
-            return ChatResponseDTO.builder()
+            return ChatMessageResponseDTO.builder()
                     .success(true)
                     .aiMessage(aiMessage)
                     .currentState(InterviewState.INTERVIEW_COMPLETED)
@@ -361,7 +300,7 @@ public class ChatService {
             // 增加已提问数量
             sessionService.incrementAskedQuestionCount(sessionId);
 
-            return ChatResponseDTO.builder()
+            return ChatMessageResponseDTO.builder()
                     .success(true)
                     .aiMessage(aiMessage)
                     .currentState(InterviewState.WAITING_FOR_USER_ANSWER)
@@ -372,7 +311,7 @@ public class ChatService {
     /**
      * 生成第一个问题
      */
-    private String generateFirstQuestion(Long sessionId, StartSessionRequestDTO request) {
+    private String generateFirstQuestion(Long sessionId, StartInterviewRequestDTO request) {
         Question selectedQuestion = selectQuestion(sessionId, request);
 
         if (selectedQuestion == null) {
@@ -386,7 +325,7 @@ public class ChatService {
     /**
      * 选择题目的策略
      */
-    private Question selectQuestion(Long sessionId, StartSessionRequestDTO request) {
+    private Question selectQuestion(Long sessionId, StartInterviewRequestDTO request) {
         Optional<Session> sessionOpt = sessionMapper.findById(sessionId);
         if (sessionOpt.isEmpty()) {
             return null;

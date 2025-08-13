@@ -1,4 +1,4 @@
-package com.xinyu.InterviewCoach_v2.dto;
+package com.xinyu.InterviewCoach_v2.dto.core;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.xinyu.InterviewCoach_v2.enums.MessageType;

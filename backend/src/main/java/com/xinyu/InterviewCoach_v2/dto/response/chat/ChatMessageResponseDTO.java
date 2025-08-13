@@ -1,68 +1,75 @@
 package com.xinyu.InterviewCoach_v2.dto.response.chat;
 
-import com.xinyu.InterviewCoach_v2.dto.SessionDTO;
+import com.xinyu.InterviewCoach_v2.dto.core.MessageDTO;
+import com.xinyu.InterviewCoach_v2.dto.core.SessionDTO;
 import com.xinyu.InterviewCoach_v2.enums.InterviewState;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import java.time.LocalDateTime;
 
 /**
- * 会话操作响应DTO
+ * 聊天消息响应DTO - 重构整理版本
  */
-public class SessionResponseDTO {
+public class ChatMessageResponseDTO {
     private boolean success;
     private String message;
-    private SessionDTO session;
+    private MessageDTO aiMessage;
     private InterviewState currentState;
     private boolean chatInputEnabled;
+    private SessionDTO session;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime timestamp;
 
-    public SessionResponseDTO() {
+    public ChatMessageResponseDTO() {
         this.timestamp = LocalDateTime.now();
     }
 
-    public SessionResponseDTO(boolean success, String message) {
+    public ChatMessageResponseDTO(boolean success, String message) {
         this();
         this.success = success;
         this.message = message;
     }
 
-    public SessionResponseDTO(boolean success, SessionDTO session, InterviewState currentState, boolean chatInputEnabled) {
+    public ChatMessageResponseDTO(boolean success, MessageDTO aiMessage, InterviewState currentState, boolean chatInputEnabled) {
         this();
         this.success = success;
-        this.session = session;
+        this.aiMessage = aiMessage;
         this.currentState = currentState;
         this.chatInputEnabled = chatInputEnabled;
     }
 
     // Builder pattern
-    public static SessionResponseDTO builder() {
-        return new SessionResponseDTO();
+    public static ChatMessageResponseDTO builder() {
+        return new ChatMessageResponseDTO();
     }
 
-    public SessionResponseDTO success(boolean success) {
+    public ChatMessageResponseDTO success(boolean success) {
         this.success = success;
         return this;
     }
 
-    public SessionResponseDTO message(String message) {
+    public ChatMessageResponseDTO message(String message) {
         this.message = message;
         return this;
     }
 
-    public SessionResponseDTO session(SessionDTO session) {
-        this.session = session;
+    public ChatMessageResponseDTO aiMessage(MessageDTO aiMessage) {
+        this.aiMessage = aiMessage;
         return this;
     }
 
-    public SessionResponseDTO currentState(InterviewState currentState) {
+    public ChatMessageResponseDTO currentState(InterviewState currentState) {
         this.currentState = currentState;
         return this;
     }
 
-    public SessionResponseDTO chatInputEnabled(boolean chatInputEnabled) {
+    public ChatMessageResponseDTO chatInputEnabled(boolean chatInputEnabled) {
         this.chatInputEnabled = chatInputEnabled;
+        return this;
+    }
+
+    public ChatMessageResponseDTO session(SessionDTO session) {
+        this.session = session;
         return this;
     }
 
@@ -83,12 +90,12 @@ public class SessionResponseDTO {
         this.message = message;
     }
 
-    public SessionDTO getSession() {
-        return session;
+    public MessageDTO getAiMessage() {
+        return aiMessage;
     }
 
-    public void setSession(SessionDTO session) {
-        this.session = session;
+    public void setAiMessage(MessageDTO aiMessage) {
+        this.aiMessage = aiMessage;
     }
 
     public InterviewState getCurrentState() {
@@ -105,6 +112,14 @@ public class SessionResponseDTO {
 
     public void setChatInputEnabled(boolean chatInputEnabled) {
         this.chatInputEnabled = chatInputEnabled;
+    }
+
+    public SessionDTO getSession() {
+        return session;
+    }
+
+    public void setSession(SessionDTO session) {
+        this.session = session;
     }
 
     public LocalDateTime getTimestamp() {

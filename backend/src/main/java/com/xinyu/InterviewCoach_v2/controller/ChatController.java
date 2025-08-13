@@ -1,11 +1,11 @@
 package com.xinyu.InterviewCoach_v2.controller;
 
-import com.xinyu.InterviewCoach_v2.dto.MessageDTO;
-import com.xinyu.InterviewCoach_v2.dto.SessionDTO;
+import com.xinyu.InterviewCoach_v2.dto.core.MessageDTO;
+import com.xinyu.InterviewCoach_v2.dto.core.SessionDTO;
 import com.xinyu.InterviewCoach_v2.dto.request.chat.SendMessageRequestDTO;
-import com.xinyu.InterviewCoach_v2.dto.request.chat.StartSessionRequestDTO;
-import com.xinyu.InterviewCoach_v2.dto.response.chat.ChatResponseDTO;
-import com.xinyu.InterviewCoach_v2.dto.response.chat.SessionResponseDTO;
+import com.xinyu.InterviewCoach_v2.dto.request.chat.StartInterviewRequestDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.chat.ChatMessageResponseDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.chat.InterviewSessionResponseDTO;
 import com.xinyu.InterviewCoach_v2.dto.response.common.ApiErrorResponseDTO;
 import com.xinyu.InterviewCoach_v2.dto.response.common.ApiSuccessResponseDTO;
 import com.xinyu.InterviewCoach_v2.service.ChatService;
@@ -42,8 +42,8 @@ public class ChatController {
      * 启动新的面试会话
      */
     @PostMapping("/sessions")
-    public ResponseEntity<?> startSession(@Valid @RequestBody StartSessionRequestDTO request,
-                                          HttpServletRequest httpRequest) {
+    public ResponseEntity<?> startInterview(@Valid @RequestBody StartInterviewRequestDTO request,
+                                            HttpServletRequest httpRequest) {
         try {
             Long userId = getUserIdFromRequest(httpRequest);
             if (userId == null) {
@@ -51,34 +51,18 @@ public class ChatController {
                         .body(new ApiErrorResponseDTO("用户未认证", "UNAUTHORIZED"));
             }
 
-            // 将新的DTO转换为旧的DTO格式（临时兼容）
-            com.xinyu.InterviewCoach_v2.dto.StartSessionRequest oldRequest =
-                    new com.xinyu.InterviewCoach_v2.dto.StartSessionRequest();
-            oldRequest.setMode(request.getMode());
-            oldRequest.setExpectedQuestionCount(request.getExpectedQuestionCount());
-            oldRequest.setTagId(request.getTagId());
-            oldRequest.setQuestionIds(request.getQuestionIds());
+            InterviewSessionResponseDTO response = chatService.startInterview(userId, request);
 
-            com.xinyu.InterviewCoach_v2.dto.SessionResponse oldResponse =
-                    chatService.startSession(userId, oldRequest);
-
-            if (oldResponse.isSuccess()) {
-                // 转换为新的响应格式
-                SessionResponseDTO response = SessionResponseDTO.builder()
-                        .success(true)
-                        .session(oldResponse.getSession())
-                        .currentState(oldResponse.getCurrentState())
-                        .chatInputEnabled(oldResponse.isChatInputEnabled());
-
+            if (response.isSuccess()) {
                 return ResponseEntity.ok(response);
             } else {
                 return ResponseEntity.badRequest()
-                        .body(new ApiErrorResponseDTO(oldResponse.getMessage(), "START_SESSION_FAILED"));
+                        .body(new ApiErrorResponseDTO(response.getMessage(), "START_INTERVIEW_FAILED"));
             }
 
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ApiErrorResponseDTO("启动面试失败: " + e.getMessage(), "START_SESSION_ERROR"));
+                    .body(new ApiErrorResponseDTO("启动面试失败: " + e.getMessage(), "START_INTERVIEW_ERROR"));
         }
     }
 
@@ -96,27 +80,13 @@ public class ChatController {
                         .body(new ApiErrorResponseDTO("用户未认证", "UNAUTHORIZED"));
             }
 
-            // 将新的DTO转换为旧的DTO格式（临时兼容）
-            com.xinyu.InterviewCoach_v2.dto.SendMessageRequest oldRequest =
-                    new com.xinyu.InterviewCoach_v2.dto.SendMessageRequest();
-            oldRequest.setText(request.getText());
+            ChatMessageResponseDTO response = chatService.processUserMessage(userId, sessionId, request);
 
-            com.xinyu.InterviewCoach_v2.dto.ChatResponse oldResponse =
-                    chatService.processUserMessage(userId, sessionId, oldRequest);
-
-            if (oldResponse.isSuccess()) {
-                // 转换为新的响应格式
-                ChatResponseDTO response = ChatResponseDTO.builder()
-                        .success(true)
-                        .aiMessage(oldResponse.getAiMessage())
-                        .currentState(oldResponse.getCurrentState())
-                        .chatInputEnabled(oldResponse.isChatInputEnabled())
-                        .session(oldResponse.getSession());
-
+            if (response.isSuccess()) {
                 return ResponseEntity.ok(response);
             } else {
                 return ResponseEntity.badRequest()
-                        .body(new ApiErrorResponseDTO(oldResponse.getMessage(), "SEND_MESSAGE_FAILED"));
+                        .body(new ApiErrorResponseDTO(response.getMessage(), "SEND_MESSAGE_FAILED"));
             }
 
         } catch (Exception e) {
@@ -150,7 +120,7 @@ public class ChatController {
      * 结束面试会话
      */
     @PostMapping("/sessions/{sessionId}/end")
-    public ResponseEntity<?> endSession(@PathVariable Long sessionId, HttpServletRequest httpRequest) {
+    public ResponseEntity<?> endInterview(@PathVariable Long sessionId, HttpServletRequest httpRequest) {
         try {
             Long userId = getUserIdFromRequest(httpRequest);
             if (userId == null) {
@@ -158,26 +128,18 @@ public class ChatController {
                         .body(new ApiErrorResponseDTO("用户未认证", "UNAUTHORIZED"));
             }
 
-            com.xinyu.InterviewCoach_v2.dto.ChatResponse oldResponse =
-                    chatService.endSession(userId, sessionId);
+            ChatMessageResponseDTO response = chatService.endInterview(userId, sessionId);
 
-            if (oldResponse.isSuccess()) {
-                // 转换为新的响应格式
-                ChatResponseDTO response = ChatResponseDTO.builder()
-                        .success(true)
-                        .aiMessage(oldResponse.getAiMessage())
-                        .currentState(oldResponse.getCurrentState())
-                        .chatInputEnabled(oldResponse.isChatInputEnabled());
-
+            if (response.isSuccess()) {
                 return ResponseEntity.ok(response);
             } else {
                 return ResponseEntity.badRequest()
-                        .body(new ApiErrorResponseDTO(oldResponse.getMessage(), "END_SESSION_FAILED"));
+                        .body(new ApiErrorResponseDTO(response.getMessage(), "END_INTERVIEW_FAILED"));
             }
 
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ApiErrorResponseDTO("结束会话失败: " + e.getMessage(), "END_SESSION_ERROR"));
+                    .body(new ApiErrorResponseDTO("结束会话失败: " + e.getMessage(), "END_INTERVIEW_ERROR"));
         }
     }
 

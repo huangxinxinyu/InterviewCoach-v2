@@ -2,16 +2,15 @@ package com.xinyu.InterviewCoach_v2.dto.request.chat;
 
 import com.xinyu.InterviewCoach_v2.enums.SessionMode;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
-import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 
 import java.util.List;
 
 /**
- * 开始面试会话请求DTO
+ * 开始面试请求DTO - 重构整理版本
  */
-public class StartSessionRequestDTO {
+public class StartInterviewRequestDTO {
 
     @NotNull(message = "会话模式不能为空")
     private SessionMode mode;
@@ -24,20 +23,20 @@ public class StartSessionRequestDTO {
     private Long tagId; // 用于单主题模式
     private List<Long> questionIds; // 用于结构化题集模式
 
-    public StartSessionRequestDTO() {}
+    public StartInterviewRequestDTO() {}
 
-    public StartSessionRequestDTO(SessionMode mode, Integer expectedQuestionCount) {
+    public StartInterviewRequestDTO(SessionMode mode, Integer expectedQuestionCount) {
         this.mode = mode;
         this.expectedQuestionCount = expectedQuestionCount;
     }
 
-    public StartSessionRequestDTO(SessionMode mode, Integer expectedQuestionCount, Long tagId) {
+    public StartInterviewRequestDTO(SessionMode mode, Integer expectedQuestionCount, Long tagId) {
         this.mode = mode;
         this.expectedQuestionCount = expectedQuestionCount;
         this.tagId = tagId;
     }
 
-    public StartSessionRequestDTO(SessionMode mode, Integer expectedQuestionCount, List<Long> questionIds) {
+    public StartInterviewRequestDTO(SessionMode mode, Integer expectedQuestionCount, List<Long> questionIds) {
         this.mode = mode;
         this.expectedQuestionCount = expectedQuestionCount;
         this.questionIds = questionIds;
@@ -58,7 +57,7 @@ public class StartSessionRequestDTO {
                 return questionIds != null && !questionIds.isEmpty()
                         && questionIds.size() >= expectedQuestionCount;
             case STRUCTURED_TEMPLATE:
-                return true; // 模板模式不需要额外参数
+                return true;
             default:
                 return false;
         }
@@ -99,7 +98,7 @@ public class StartSessionRequestDTO {
 
     @Override
     public String toString() {
-        return "StartSessionRequestDTO{" +
+        return "StartInterviewRequestDTO{" +
                 "mode=" + mode +
                 ", expectedQuestionCount=" + expectedQuestionCount +
                 ", tagId=" + tagId +

@@ -1,6 +1,6 @@
 package com.xinyu.InterviewCoach_v2.service;
 
-import com.xinyu.InterviewCoach_v2.dto.SessionDTO;
+import com.xinyu.InterviewCoach_v2.dto.core.SessionDTO;
 import com.xinyu.InterviewCoach_v2.entity.Session;
 import com.xinyu.InterviewCoach_v2.enums.SessionMode;
 import com.xinyu.InterviewCoach_v2.mapper.SessionMapper;
