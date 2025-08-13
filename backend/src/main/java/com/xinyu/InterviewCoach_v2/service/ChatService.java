@@ -84,6 +84,11 @@ public class ChatService {
             // 结束用户所有活跃会话
             sessionService.endAllActiveSessionsByUserId(userId);
 
+            // 为structured_set模式处理题目数量
+            if (request.getMode() == SessionMode.STRUCTURED_SET) {
+                handleStructuredSetMode(request);
+            }
+
             // 创建新会话
             SessionDTO session = sessionService.createSession(
                     userId,
@@ -134,6 +139,7 @@ public class ChatService {
                         .success(false)
                         .message("会话已结束");
             }
+
 
             // 验证消息内容
             if (!request.isValid()) {
@@ -319,6 +325,7 @@ public class ChatService {
         }
 
         String prompt = buildFirstQuestionPrompt(request.getMode(), selectedQuestion);
+        System.out.println(prompt);
         return callOpenAI(prompt);
     }
 
@@ -468,6 +475,31 @@ public class ChatService {
     }
 
     /**
+     * 处理structured_set模式的特殊逻辑
+     */
+    private void handleStructuredSetMode(StartInterviewRequestDTO request) {
+        if (request.getQuestionSetId() != null) {
+            // 如果提供了questionSetId，从题集获取题目列表
+            List<Long> questionIds = questionSetService.getQuestionIdsBySetId(request.getQuestionSetId());
+            if (questionIds.isEmpty()) {
+                throw new RuntimeException("题集中没有题目");
+            }
+            request.setQuestionIds(questionIds);
+            request.setExpectedQuestionCount(questionIds.size());
+        } else if (request.getQuestionIds() != null) {
+            // 如果直接提供了questionIds，确保expectedQuestionCount与之一致
+            request.setExpectedQuestionCount(request.getQuestionIds().size());
+        } else {
+            throw new RuntimeException("structured_set模式必须提供questionSetId或questionIds");
+        }
+
+        // 验证题目数量不能超过限制
+        if (request.getExpectedQuestionCount() > 20) {
+            throw new RuntimeException("题目数量不能超过20个");
+        }
+    }
+
+    /**
      * 从队列获取下一题（structured_set模式）
      */
     private Question getNextQuestionFromQueue(Long sessionId) {
@@ -536,7 +568,10 @@ public class ChatService {
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", openAiModel);
             requestBody.put("messages", Arrays.asList(
-                    Map.of("role", "system", "content", "你是一个专业的技术面试官，经验丰富，善于引导候选人。"),
+                    Map.of("role", "system", "content",
+                            "你是一个专业的技术面试官，正在直接与候选人对话。" +
+                                    "请始终以第一人称与候选人交流，就像真正的面试官一样。" +
+                                    "不要提供指导建议或元话语，直接进行面试对话。"),
                     Map.of("role", "user", "content", prompt)
             ));
             requestBody.put("max_tokens", 1000);
