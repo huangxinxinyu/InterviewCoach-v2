@@ -16,22 +16,8 @@ export const useChatStore = defineStore('chat', () => {
     const currentSessionId = computed(() => currentSession.value?.id)
     const hasActiveSessions = computed(() => sessions.value.length > 0)
 
-    // 获取所有会话
-    const fetchSessions = async () => {
-        loading.value = true
-        error.value = null
 
-        try {
-            const response = await chatAPI.getSessions()
-            sessions.value = response.data
-        } catch (err: any) {
-            error.value = err.response?.data?.message || '获取会话列表失败'
-        } finally {
-            loading.value = false
-        }
-    }
-
-    // 创建新会话
+// 创建新会话
     const createSession = async (request: StartInterviewRequest) => {
         loading.value = true
         error.value = null
@@ -39,6 +25,11 @@ export const useChatStore = defineStore('chat', () => {
         try {
             const response = await chatAPI.createSession(request)
             const newSession = response.data
+
+            // 确保 sessions.value 是数组
+            if (!Array.isArray(sessions.value)) {
+                sessions.value = []
+            }
 
             sessions.value.unshift(newSession)
             currentSession.value = newSession
@@ -48,6 +39,30 @@ export const useChatStore = defineStore('chat', () => {
         } catch (err: any) {
             error.value = err.response?.data?.message || '创建会话失败'
             throw err
+        } finally {
+            loading.value = false
+        }
+    }
+
+// 获取所有会话
+    const fetchSessions = async () => {
+        loading.value = true
+        error.value = null
+
+        try {
+            const response = await chatAPI.getSessions()
+            // 确保响应数据是数组，处理不同的响应格式
+            const data = response.data
+            if (Array.isArray(data)) {
+                sessions.value = data
+            } else if (data && Array.isArray(data.data)) {
+                sessions.value = data.data
+            } else {
+                sessions.value = []
+            }
+        } catch (err: any) {
+            error.value = err.response?.data?.message || '获取会话列表失败'
+            sessions.value = [] // 确保在错误时也是数组
         } finally {
             loading.value = false
         }

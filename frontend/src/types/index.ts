@@ -23,9 +23,9 @@ export interface RegisterRequest {
 
 // 会话相关类型
 export enum SessionMode {
-    SINGLE_TOPIC = 'single_topic',
-    STRUCTURED_SET = 'structured_set',
-    STRUCTURED_TEMPLATE = 'structured_template'
+    SINGLE_TOPIC = 'SINGLE_TOPIC',
+    STRUCTURED_SET = 'STRUCTURED_SET',
+    STRUCTURED_TEMPLATE = 'STRUCTURED_TEMPLATE'
 }
 
 export enum MessageType {

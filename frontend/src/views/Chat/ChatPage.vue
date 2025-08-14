@@ -348,8 +348,13 @@ const handleStartInterview = async (request: any) => {
     await chatStore.createSession(request)
     closeInterviewModeModal()
     uiStore.addNotification('success', '面试已开始')
-  } catch (error) {
-    uiStore.addNotification('error', '创建面试失败，请重试')
+  } catch (error: any) {
+    console.error('创建面试失败:', error)
+    const errorMessage = error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        '创建面试失败，请重试'
+    uiStore.addNotification('error', errorMessage)
   }
 }
 
@@ -394,9 +399,8 @@ const formatTime = (dateString: string) => {
     minute: '2-digit'
   })
 }
-
 onMounted(async () => {
-  // 获取会话列表
+  // 组件挂载时获取会话列表
   await chatStore.fetchSessions()
 })
 </script>

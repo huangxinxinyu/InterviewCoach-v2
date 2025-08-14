@@ -61,8 +61,31 @@
         返回模式选择
       </button>
 
-      <div class="space-y-3">
-        <template v-if="selectedMode === 'single_topic'">
+      <!-- 加载状态 -->
+      <div v-if="loadingOptions" class="text-center py-8">
+        <div class="inline-flex items-center">
+          <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-primary-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          加载选项中...
+        </div>
+      </div>
+
+      <!-- 错误状态 -->
+      <div v-else-if="optionsError" class="text-center py-8">
+        <div class="text-red-600 mb-4">{{ optionsError }}</div>
+        <button
+            @click="loadOptions"
+            class="px-4 py-2 bg-primary-500 text-white rounded-md hover:bg-primary-600 transition-colors"
+        >
+          重试
+        </button>
+      </div>
+
+      <!-- 选项列表 -->
+      <div v-else class="space-y-3">
+        <template v-if="selectedMode === SessionMode.SINGLE_TOPIC">
           <div class="space-y-3">
             <label
                 v-for="tag in availableTags"
@@ -106,7 +129,7 @@
           </div>
         </template>
 
-        <template v-else-if="selectedMode === 'structured_set'">
+        <template v-else-if="selectedMode === SessionMode.STRUCTURED_SET">
           <label
               v-for="questionSet in availableQuestionSets"
               :key="questionSet.id"
@@ -135,7 +158,7 @@
           </label>
         </template>
 
-        <template v-else-if="selectedMode === 'structured_template'">
+        <template v-else-if="selectedMode === SessionMode.STRUCTURED_TEMPLATE">
           <label
               v-for="template in availableTemplates"
               :key="template.id"
@@ -182,7 +205,7 @@
           <BaseButton
               v-else
               variant="primary"
-              :disabled="!selectedOption || (selectedMode === 'single_topic' && !expectedQuestionCount)"
+              :disabled="!selectedOption || (selectedMode === SessionMode.SINGLE_TOPIC && !expectedQuestionCount)"
               @click="startInterview"
               :loading="loading"
           >
@@ -196,7 +219,8 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { SessionMode } from '@/types'
+import { SessionMode, type Tag, type QuestionSet, type Template } from '@/types'
+import { optionsAPI } from '@/services/api'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 
@@ -214,47 +238,33 @@ const emit = defineEmits<Emits>()
 
 // 响应式数据
 const currentStep = ref(1)
-const selectedMode = ref<string>('')
+const selectedMode = ref<SessionMode | ''>('')
 const selectedOption = ref<number | null>(null)
 const expectedQuestionCount = ref(5)
 const loading = ref(false)
+const loadingOptions = ref(false)
+const optionsError = ref<string | null>(null)
+
+// 真实数据
+const availableTags = ref<Tag[]>([])
+const availableQuestionSets = ref<QuestionSet[]>([])
+const availableTemplates = ref<Template[]>([])
 
 // 面试模式定义
 const interviewModes = {
-  single_topic: {
+  [SessionMode.SINGLE_TOPIC]: {
     title: '单主题模式',
     description: '选择一个特定技术领域进行练习'
   },
-  structured_set: {
+  [SessionMode.STRUCTURED_SET]: {
     title: '结构化题集',
     description: '使用预设的面试题目集合'
   },
-  structured_template: {
+  [SessionMode.STRUCTURED_TEMPLATE]: {
     title: '智能模板',
     description: 'AI根据模板智能选择题目'
   }
 }
-
-// 模拟数据 - 实际应该从 API 获取
-const availableTags = ref([
-  { id: 1, name: 'JavaScript 基础', description: '包含变量、作用域、原型链、异步编程等核心概念' },
-  { id: 2, name: 'React 框架', description: '组件生命周期、Hooks、状态管理、性能优化等' },
-  { id: 3, name: 'Node.js', description: '事件循环、文件系统、Express框架、数据库操作等' },
-  { id: 4, name: '算法与数据结构', description: '排序、搜索、动态规划、树与图等算法题' }
-])
-
-const availableQuestionSets = ref([
-  { id: 1, name: '前端基础题集', description: '适合前端初级开发者', questionCount: 15 },
-  { id: 2, name: '全栈中级题集', description: '涵盖前后端技术栈', questionCount: 20 },
-  { id: 3, name: '高级开发题集', description: '架构设计与性能优化', questionCount: 25 },
-  { id: 4, name: '系统设计题集', description: '大型系统架构设计', questionCount: 12 }
-])
-
-const availableTemplates = ref([
-  { id: 1, name: '综合面试模板', description: '涵盖技术基础、项目经验、系统设计等' },
-  { id: 2, name: '技术专精模板', description: '专注核心技术能力评估' },
-  { id: 3, name: '技术领导力模板', description: '评估团队管理和技术决策能力' }
-])
 
 // 计算属性
 const selectedModeInfo = computed(() => {
@@ -273,6 +283,7 @@ const resetModal = () => {
   selectedOption.value = null
   expectedQuestionCount.value = 5
   loading.value = false
+  optionsError.value = null
 }
 
 const goBackToStep1 = () => {
@@ -280,10 +291,46 @@ const goBackToStep1 = () => {
   selectedOption.value = null
 }
 
-const goToStep2 = () => {
+const goToStep2 = async () => {
   if (!selectedMode.value) return
   currentStep.value = 2
   selectedOption.value = null
+  await loadOptions()
+}
+
+// 加载选项数据
+const loadOptions = async () => {
+  if (!selectedMode.value) return
+
+  loadingOptions.value = true
+  optionsError.value = null
+
+  try {
+    switch (selectedMode.value) {
+      case SessionMode.SINGLE_TOPIC:
+        const tagsResponse = await optionsAPI.getTags()
+        // 处理后端的统一响应格式 {success: true, data: [...]}
+        availableTags.value = tagsResponse.data.data || tagsResponse.data || []
+        break
+      case SessionMode.STRUCTURED_SET:
+        const questionSetsResponse = await optionsAPI.getQuestionSets()
+        availableQuestionSets.value = questionSetsResponse.data.data || questionSetsResponse.data || []
+        break
+      case SessionMode.STRUCTURED_TEMPLATE:
+        const templatesResponse = await optionsAPI.getTemplates()
+        availableTemplates.value = templatesResponse.data.data || templatesResponse.data || []
+        break
+    }
+  } catch (error: any) {
+    console.error('加载选项失败:', error)
+    const errorMessage = error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        '加载选项失败，请稍后重试'
+    optionsError.value = errorMessage
+  } finally {
+    loadingOptions.value = false
+  }
 }
 
 const startInterview = async () => {
@@ -298,14 +345,14 @@ const startInterview = async () => {
 
     // 根据不同模式构建请求参数
     switch (selectedMode.value) {
-      case 'single_topic':
+      case SessionMode.SINGLE_TOPIC:
         request.tagId = selectedOption.value
         request.expectedQuestionCount = expectedQuestionCount.value
         break
-      case 'structured_set':
+      case SessionMode.STRUCTURED_SET:
         request.questionSetId = selectedOption.value
         break
-      case 'structured_template':
+      case SessionMode.STRUCTURED_TEMPLATE:
         request.templateId = selectedOption.value
         break
     }
