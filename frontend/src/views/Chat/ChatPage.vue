@@ -245,7 +245,8 @@ import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
 import { useUIStore } from '@/stores/ui'
-import type { Session, Message, SessionMode } from '@/types'
+import { SessionMode } from '@/types'
+import type { Session, Message } from '@/types'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import InterviewModeModal from '@/components/modals/InterviewModeModal.vue'
 import DeleteConfirmModal from '@/components/modals/DeleteConfirmModal.vue'
@@ -364,13 +365,18 @@ const logout = () => {
   uiStore.addNotification('success', '已退出登录')
 }
 
-const getModeDescription = (mode: SessionMode) => {
-  const descriptions = {
-    [SessionMode.SINGLE_TOPIC]: '单主题模式',
-    [SessionMode.STRUCTURED_SET]: '结构化题集',
-    [SessionMode.STRUCTURED_TEMPLATE]: '智能模板'
+// Fixed getModeDescription function
+const getModeDescription = (mode: string | SessionMode) => {
+  // Handle both string and enum values
+  const modeStr = typeof mode === 'string' ? mode : mode.toString()
+
+  const descriptions: Record<string, string> = {
+    'SINGLE_TOPIC': '单主题模式',
+    'STRUCTURED_SET': '结构化题集',
+    'STRUCTURED_TEMPLATE': '智能模板'
   }
-  return descriptions[mode] || '未知模式'
+
+  return descriptions[modeStr] || '未知模式'
 }
 
 const formatDate = (dateString: string) => {
@@ -399,6 +405,7 @@ const formatTime = (dateString: string) => {
     minute: '2-digit'
   })
 }
+
 onMounted(async () => {
   // 组件挂载时获取会话列表
   await chatStore.fetchSessions()
