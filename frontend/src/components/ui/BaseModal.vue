@@ -33,13 +33,15 @@
             >
               <!-- Header -->
               <div v-if="showHeader" class="flex items-center justify-between p-6 border-b border-primary-200">
-                <h3 class="text-lg font-semibold text-primary-900">
-                  <slot name="header">{{ title }}</slot>
-                </h3>
+                <div class="flex-1">
+                  <slot name="header">
+                    <h3 class="text-lg font-semibold text-primary-900">{{ title }}</h3>
+                  </slot>
+                </div>
                 <button
                     v-if="showCloseButton"
                     @click="close"
-                    class="text-primary-400 hover:text-primary-600 transition-colors p-1 rounded-md hover:bg-primary-50"
+                    class="text-primary-400 hover:text-primary-600 transition-colors p-1 rounded-md hover:bg-primary-50 ml-4"
                 >
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -53,24 +55,8 @@
               </div>
 
               <!-- Footer -->
-              <div v-if="showFooter" class="flex justify-end space-x-3 px-6 py-4 border-t border-primary-200">
-                <slot name="footer">
-                  <BaseButton
-                      v-if="showCancelButton"
-                      variant="ghost"
-                      @click="close"
-                  >
-                    {{ cancelText }}
-                  </BaseButton>
-                  <BaseButton
-                      v-if="showConfirmButton"
-                      :variant="confirmVariant"
-                      :loading="loading"
-                      @click="confirm"
-                  >
-                    {{ confirmText }}
-                  </BaseButton>
-                </slot>
+              <div v-if="showFooter" class="flex items-center justify-end px-6 py-4 border-t border-primary-200 bg-primary-25">
+                <slot name="footer" />
               </div>
             </div>
           </Transition>
@@ -81,95 +67,64 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
-import BaseButton from './BaseButton.vue'
+import { computed } from 'vue'
 
 interface Props {
   show: boolean
   title?: string
-  size?: 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'small' | 'medium' | 'large' | 'xlarge'
   showHeader?: boolean
   showFooter?: boolean
   showCloseButton?: boolean
-  showCancelButton?: boolean
-  showConfirmButton?: boolean
-  cancelText?: string
-  confirmText?: string
-  confirmVariant?: 'primary' | 'secondary' | 'ghost' | 'danger'
-  loading?: boolean
-  closeOnBackdrop?: boolean
+  closable?: boolean
+}
+
+interface Emits {
+  (e: 'close'): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  size: 'md',
+  title: '',
+  size: 'medium',
   showHeader: true,
-  showFooter: false,
+  showFooter: true,
   showCloseButton: true,
-  showCancelButton: true,
-  showConfirmButton: true,
-  cancelText: '取消',
-  confirmText: '确认',
-  confirmVariant: 'primary',
-  loading: false,
-  closeOnBackdrop: true
+  closable: true
 })
 
-const emit = defineEmits<{
-  close: []
-  confirm: []
-}>()
-
-const sizeClasses = {
-  sm: 'max-w-sm',
-  md: 'max-w-md',
-  lg: 'max-w-lg',
-  xl: 'max-w-xl'
-}
+const emit = defineEmits<Emits>()
 
 const modalClasses = computed(() => {
+  const sizeClasses = {
+    small: 'w-full max-w-md',
+    medium: 'w-full max-w-lg',
+    large: 'w-full max-w-2xl',
+    xlarge: 'w-full max-w-4xl'
+  }
+
   return [
-    'relative bg-white rounded-xl shadow-xl transform transition-all',
-    sizeClasses[props.size],
-    'w-full mx-4'
+    'relative bg-white rounded-lg shadow-xl mx-4 max-h-[90vh] overflow-hidden',
+    sizeClasses[props.size]
   ].join(' ')
 })
 
 const bodyClasses = computed(() => {
-  const base = 'px-6'
-  if (props.showHeader && props.showFooter) {
-    return `${base} py-4`
-  } else if (props.showHeader || props.showFooter) {
-    return `${base} py-6`
-  }
-  return `${base} py-8`
+  return [
+    'p-6',
+    props.showFooter ? '' : 'pb-6',
+    'max-h-[70vh] overflow-y-auto'
+  ].join(' ')
 })
 
 const close = () => {
-  emit('close')
-}
-
-const confirm = () => {
-  emit('confirm')
+  if (props.closable) {
+    emit('close')
+  }
 }
 
 const handleBackdropClick = () => {
-  if (props.closeOnBackdrop) {
+  if (props.closable) {
     close()
   }
 }
-
-// 按ESC键关闭
-const handleEscape = (event: KeyboardEvent) => {
-  if (event.key === 'Escape' && props.show) {
-    close()
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('keydown', handleEscape)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('keydown', handleEscape)
-})
 </script>
