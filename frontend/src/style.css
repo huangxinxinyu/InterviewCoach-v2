@@ -1,0 +1,221 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 导入Inter字体 */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+/* 基础样式重置 */
+@layer base {
+    * {
+        border-color: theme('colors.primary.200');
+    }
+
+    body {
+        @apply bg-white text-primary-900 font-sans;
+        font-feature-settings: 'rlig' 1, 'calt' 1;
+    }
+
+    /* 滚动条样式 */
+    ::-webkit-scrollbar {
+        @apply w-2;
+    }
+
+    ::-webkit-scrollbar-track {
+        @apply bg-primary-100;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        @apply bg-primary-300 rounded-full;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        @apply bg-primary-400;
+    }
+
+    /* 选择文本样式 */
+    ::selection {
+        @apply bg-accent-100 text-accent-900;
+    }
+
+    /* 焦点样式 */
+    :focus {
+        @apply outline-none;
+    }
+
+    /* 平滑滚动 */
+    html {
+        scroll-behavior: smooth;
+    }
+}
+
+/* 组件样式 */
+@layer components {
+    /* 按钮基础样式增强 */
+    .btn-focus {
+        @apply focus:ring-2 focus:ring-offset-2 focus:ring-opacity-50;
+    }
+
+    /* 卡片样式 */
+    .card {
+        @apply bg-white rounded-lg shadow-sm border border-primary-100;
+    }
+
+    .card-hover {
+        @apply hover:shadow-md transition-shadow duration-200;
+    }
+
+    /* 输入框聚焦效果 */
+    .input-focus {
+        @apply focus:ring-2 focus:ring-accent-500 focus:border-accent-500;
+    }
+
+    /* 文本样式 */
+    .text-muted {
+        @apply text-primary-500;
+    }
+
+    .text-subtle {
+        @apply text-primary-400;
+    }
+
+    /* 分隔线 */
+    .divider {
+        @apply border-t border-primary-200;
+    }
+
+    /* 加载动画 */
+    .loading-dots {
+        @apply inline-flex space-x-1;
+    }
+
+    .loading-dots > div {
+        @apply w-2 h-2 bg-current rounded-full animate-pulse;
+    }
+
+    .loading-dots > div:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+
+    .loading-dots > div:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+}
+
+/* 工具类 */
+@layer utilities {
+    /* 渐变背景 */
+    .bg-gradient-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .bg-gradient-subtle {
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    }
+
+    /* 文本渐变 */
+    .text-gradient {
+        @apply bg-gradient-to-r from-accent-600 to-accent-400 bg-clip-text text-transparent;
+    }
+
+    /* 玻璃效果 */
+    .glass {
+        backdrop-filter: blur(12px);
+        background: rgba(255, 255, 255, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    /* 阴影层次 */
+    .shadow-subtle {
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    }
+
+    .shadow-medium {
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+
+    .shadow-strong {
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    }
+
+    /* 动画增强 */
+    .animate-fade-in-up {
+        animation: fadeInUp 0.5s ease-out;
+    }
+
+    .animate-fade-in-down {
+        animation: fadeInDown 0.5s ease-out;
+    }
+
+    .animate-scale-in {
+        animation: scaleIn 0.3s ease-out;
+    }
+
+    /* 响应式隐藏/显示 */
+    .mobile-only {
+        @apply block md:hidden;
+    }
+
+    .desktop-only {
+        @apply hidden md:block;
+    }
+}
+
+/* 动画关键帧 */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* 深色模式支持 */
+@media (prefers-color-scheme: dark) {
+    /* 如果需要支持深色模式，可以在这里添加样式 */
+}
+
+/* 高对比度模式支持 */
+@media (prefers-contrast: more) {
+    .card {
+        @apply border-2 border-primary-300;
+    }
+}
+
+/* 减少动画支持 */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+
+    html {
+        scroll-behavior: auto;
+    }
+}

@@ -1,11 +1,27 @@
-<script setup></script>
-
 <template>
-  <h1>You did it!</h1>
-  <p>
-    Visit <a href="https://vuejs.org/" target="_blank" rel="noopener">vuejs.org</a> to read the
-    documentation
-  </p>
+  <div id="app" class="min-h-screen bg-white">
+    <!-- 路由视图 -->
+    <router-view />
+
+    <!-- 全局通知容器 -->
+    <NotificationContainer />
+  </div>
 </template>
 
-<style scoped></style>
+<script setup lang="ts">
+import { onMounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import NotificationContainer from '@/components/ui/NotificationContainer.vue'
+
+const authStore = useAuthStore()
+
+// 应用初始化
+onMounted(async () => {
+  // 初始化认证状态
+  await authStore.initAuth()
+})
+</script>
+
+<style>
+/* 全局样式已在 style.css 中定义 */
+</style>
