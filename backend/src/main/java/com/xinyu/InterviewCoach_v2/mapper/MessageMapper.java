@@ -75,13 +75,13 @@ public interface MessageMapper {
     /**
      * 统计会话中AI消息数量
      */
-    @Select("SELECT COUNT(*) FROM message WHERE session_id = #{sessionId} AND type = 'ai'")
+    @Select("SELECT COUNT(*) FROM message WHERE session_id = #{sessionId} AND type = 'AI'")
     long countAIMessagesBySessionId(Long sessionId);
 
     /**
      * 统计会话中用户消息数量
      */
-    @Select("SELECT COUNT(*) FROM message WHERE session_id = #{sessionId} AND type = 'user'")
+    @Select("SELECT COUNT(*) FROM message WHERE session_id = #{sessionId} AND type = 'USER'")
     long countUserMessagesBySessionId(Long sessionId);
 
     /**

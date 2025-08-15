@@ -4,8 +4,8 @@ package com.xinyu.InterviewCoach_v2.enums;
  * 消息类型枚举
  */
 public enum MessageType {
-    AI("ai", "AI消息"),
-    USER("user", "用户消息");
+    AI("AI", "AI消息"),
+    USER("USER", "用户消息");
 
     private final String value;
     private final String description;
