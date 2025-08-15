@@ -12,6 +12,8 @@ import com.xinyu.InterviewCoach_v2.dto.response.common.ApiSuccessResponseDTO;
 import com.xinyu.InterviewCoach_v2.enums.UserRole;
 import com.xinyu.InterviewCoach_v2.service.AuthService;
 import com.xinyu.InterviewCoach_v2.service.UserService;
+import com.xinyu.InterviewCoach_v2.util.JwtUtil;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -34,6 +36,9 @@ public class UserController {
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private JwtUtil jwtUtil;
 
     /**
      * 用户注册
@@ -200,5 +205,38 @@ public class UserController {
     public ResponseEntity<ApiSuccessResponseDTO<Long>> getUserCount() {
         long count = userService.getUserCount();
         return ResponseEntity.ok(new ApiSuccessResponseDTO<>(count));
+    }
+
+    /**
+     * 获取当前用户信息
+     */
+    @GetMapping("/me")
+    public ResponseEntity<?> getCurrentUser(HttpServletRequest request) {
+        try {
+            // 从JWT token中获取用户ID
+            String token = request.getHeader("Authorization");
+            if (token != null && token.startsWith("Bearer ")) {
+                token = token.substring(7);
+
+                // 假设你有 JwtUtil 来解析token
+                Long userId = jwtUtil.getUserIdFromToken(token);
+
+                if (userId != null) {
+                    Optional<UserDTO> user = userService.getUserById(userId);
+                    if (user.isPresent()) {
+                        return ResponseEntity.ok(new ApiSuccessResponseDTO<>(user.get()));
+                    } else {
+                        return ResponseEntity.notFound().build();
+                    }
+                }
+            }
+
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ApiErrorResponseDTO("未找到有效的认证信息", "UNAUTHORIZED"));
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiErrorResponseDTO("获取用户信息失败: " + e.getMessage(), "GET_CURRENT_USER_ERROR"));
+        }
     }
 }
