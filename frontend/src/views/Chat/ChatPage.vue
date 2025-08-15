@@ -367,6 +367,11 @@ const logout = () => {
 
 // Fixed getModeDescription function
 const getModeDescription = (mode: string | SessionMode) => {
+  // 首先检查 mode 是否存在
+  if (!mode) {
+    return '未知模式'
+  }
+
   // Handle both string and enum values
   const modeStr = typeof mode === 'string' ? mode : mode.toString()
 

@@ -1,7 +1,9 @@
+// 修正后的 stores/chat.ts - 调整函数定义顺序
+
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { chatAPI } from '@/services/api'
-import type { Session, Message, StartInterviewRequest } from '@/types'
+import type { Session, Message, StartInterviewRequest, SessionMode } from '@/types'
 
 export const useChatStore = defineStore('chat', () => {
     // 状态
@@ -15,16 +17,74 @@ export const useChatStore = defineStore('chat', () => {
     // 计算属性
     const currentSessionId = computed(() => currentSession.value?.id)
     const hasActiveSessions = computed(() => sessions.value.length > 0)
+    const currentMessages = computed(() => messages.value)
+    const loadingMessages = computed(() => loading.value)
 
+    // 辅助函数：生成会话标题（移到前面）
+    const generateTitle = (mode: SessionMode, startedAt: string): string => {
+        const modeNames = {
+            'SINGLE_TOPIC': '单主题面试',
+            'STRUCTURED_SET': '结构化面试',
+            'STRUCTURED_TEMPLATE': '模板面试'
+        }
 
-// 创建新会话
+        const modeName = modeNames[mode] || '面试会话'
+        const date = new Date(startedAt).toLocaleDateString('zh-CN', {
+            month: 'short',
+            day: 'numeric'
+        })
+
+        return `${modeName} - ${date}`
+    }
+
+    // 辅助函数：将 SessionDTO 转换为 Session
+    const convertSessionDTOToSession = (sessionDTO: any): Session => {
+        return {
+            id: sessionDTO.id,
+            userId: sessionDTO.userId,
+            mode: sessionDTO.mode,
+            title: generateTitle(sessionDTO.mode, sessionDTO.startedAt),
+            completed: !sessionDTO.isActive || !!sessionDTO.endedAt,
+            createdAt: sessionDTO.startedAt,
+            updatedAt: sessionDTO.endedAt || sessionDTO.startedAt,
+            // 保留原始字段
+            expectedQuestionCount: sessionDTO.expectedQuestionCount,
+            askedQuestionCount: sessionDTO.askedQuestionCount,
+            completedQuestionCount: sessionDTO.completedQuestionCount,
+            startedAt: sessionDTO.startedAt,
+            endedAt: sessionDTO.endedAt,
+            isActive: sessionDTO.isActive
+        }
+    }
+
+    // 创建新会话
     const createSession = async (request: StartInterviewRequest) => {
         loading.value = true
         error.value = null
 
         try {
             const response = await chatAPI.createSession(request)
-            const newSession = response.data
+
+            console.log('API Response:', response.data)
+
+            // 从 InterviewSessionResponseDTO 中提取 SessionDTO
+            const responseData = response.data
+            let sessionDTO
+
+            if (responseData.session) {
+                // 从 InterviewSessionResponseDTO.session 获取 SessionDTO
+                sessionDTO = responseData.session
+            } else {
+                // 如果直接返回 SessionDTO
+                sessionDTO = responseData
+            }
+
+            console.log('Extracted SessionDTO:', sessionDTO)
+            console.log('SessionDTO mode:', sessionDTO.mode)
+
+            // 转换为前端 Session 格式
+            const newSession = convertSessionDTOToSession(sessionDTO)
+            console.log('Converted Session:', newSession)
 
             // 确保 sessions.value 是数组
             if (!Array.isArray(sessions.value)) {
@@ -37,6 +97,7 @@ export const useChatStore = defineStore('chat', () => {
 
             return newSession
         } catch (err: any) {
+            console.error('createSession error:', err)
             error.value = err.response?.data?.message || '创建会话失败'
             throw err
         } finally {
@@ -44,25 +105,35 @@ export const useChatStore = defineStore('chat', () => {
         }
     }
 
-// 获取所有会话
+    // 获取所有会话
     const fetchSessions = async () => {
         loading.value = true
         error.value = null
 
         try {
             const response = await chatAPI.getSessions()
-            // 确保响应数据是数组，处理不同的响应格式
+            console.log('getSessions response:', response.data)
+
+            // 处理不同的响应格式
+            let sessionDTOList
             const data = response.data
+
             if (Array.isArray(data)) {
-                sessions.value = data
+                sessionDTOList = data
             } else if (data && Array.isArray(data.data)) {
-                sessions.value = data.data
+                sessionDTOList = data.data
             } else {
-                sessions.value = []
+                sessionDTOList = []
             }
+
+            // 将 SessionDTO 数组转换为 Session 数组
+            sessions.value = sessionDTOList.map(convertSessionDTOToSession)
+            console.log('Converted sessions:', sessions.value)
+
         } catch (err: any) {
+            console.error('fetchSessions error:', err)
             error.value = err.response?.data?.message || '获取会话列表失败'
-            sessions.value = [] // 确保在错误时也是数组
+            sessions.value = []
         } finally {
             loading.value = false
         }
@@ -117,16 +188,9 @@ export const useChatStore = defineStore('chat', () => {
             const lastUserMsgIndex = messages.value.length - 1
             messages.value[lastUserMsgIndex] = response.data
 
-            // AI回复会通过后续的接口调用返回，这里可能需要轮询或WebSocket
-            // 简化实现，可以在发送后再次获取消息
-            setTimeout(() => {
-                fetchMessages(currentSession.value!.id)
-            }, 1000)
-
         } catch (err: any) {
             error.value = err.response?.data?.message || '发送消息失败'
-            // 移除失败的消息
-            messages.value.pop()
+            throw err
         } finally {
             sending.value = false
         }
@@ -137,35 +201,14 @@ export const useChatStore = defineStore('chat', () => {
         try {
             await chatAPI.deleteSession(sessionId)
             sessions.value = sessions.value.filter(s => s.id !== sessionId)
-
             if (currentSession.value?.id === sessionId) {
                 currentSession.value = null
                 messages.value = []
             }
         } catch (err: any) {
             error.value = err.response?.data?.message || '删除会话失败'
+            throw err
         }
-    }
-
-    // 恢复会话
-    const restoreSession = async (sessionId: number) => {
-        try {
-            await chatAPI.restoreSession(sessionId)
-            await fetchSessions() // 重新获取会话列表
-        } catch (err: any) {
-            error.value = err.response?.data?.message || '恢复会话失败'
-        }
-    }
-
-    // 清除当前会话
-    const clearCurrentSession = () => {
-        currentSession.value = null
-        messages.value = []
-    }
-
-    // 清除错误
-    const clearError = () => {
-        error.value = null
     }
 
     return {
@@ -180,16 +223,15 @@ export const useChatStore = defineStore('chat', () => {
         // 计算属性
         currentSessionId,
         hasActiveSessions,
+        currentMessages,
+        loadingMessages,
 
         // 方法
-        fetchSessions,
         createSession,
+        fetchSessions,
         setCurrentSession,
         fetchMessages,
         sendMessage,
-        deleteSession,
-        restoreSession,
-        clearCurrentSession,
-        clearError,
+        deleteSession
     }
 })

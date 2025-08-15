@@ -41,6 +41,13 @@ export interface Session {
     completed: boolean
     createdAt: string
     updatedAt: string
+    // 额外保留的后端字段
+    expectedQuestionCount?: number
+    askedQuestionCount?: number
+    completedQuestionCount?: number
+    startedAt?: string
+    endedAt?: string
+    isActive?: boolean
 }
 
 export interface Message {
@@ -58,6 +65,27 @@ export interface StartInterviewRequest {
     questionIds?: number[]
     questionSetId?: number
     templateId?: number
+}
+
+export interface SessionDTO {
+    id: number
+    userId: number
+    mode: SessionMode
+    expectedQuestionCount?: number
+    askedQuestionCount?: number
+    completedQuestionCount?: number
+    startedAt: string
+    endedAt?: string
+    isActive: boolean
+}
+
+export interface InterviewSessionResponse {
+    success: boolean
+    message?: string
+    session?: SessionDTO  // 这里包含的是 SessionDTO
+    currentState?: string
+    chatInputEnabled?: boolean
+    timestamp?: string
 }
 
 // 标签、题集、模板类型
