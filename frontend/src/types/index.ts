@@ -129,3 +129,13 @@ export interface ApiResponse<T = any> {
     message?: string
     error?: string
 }
+
+export interface ChatMessageResponseDTO {
+    success: boolean
+    message?: string
+    aiMessage?: Message
+    currentState?: string
+    chatInputEnabled?: boolean
+    session?: SessionDTO
+    timestamp?: string
+}

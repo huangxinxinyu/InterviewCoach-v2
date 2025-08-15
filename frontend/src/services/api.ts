@@ -10,7 +10,7 @@ import type {
     Tag,
     QuestionSet,
     Template,
-    ApiResponse
+    ApiResponse, ChatMessageResponseDTO
 } from '@/types'
 
 // 定义API响应类型
@@ -84,7 +84,7 @@ export const chatAPI = {
         api.get(`/chat/sessions/${sessionId}/messages`),
 
     // 发送消息
-    sendMessage: (sessionId: number, text: string): Promise<ApiResponseType<Message>> =>
+    sendMessage: (sessionId: number, text: string): Promise<ApiResponseType<ChatMessageResponseDTO>> =>
         api.post(`/chat/sessions/${sessionId}/messages`, { text }),
 
     // 删除会话

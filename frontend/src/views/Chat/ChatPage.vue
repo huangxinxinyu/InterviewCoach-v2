@@ -184,6 +184,8 @@
               :class="messageClasses(message)"
           >
             <div :class="messageBubbleClasses(message)">
+              <!-- 步骤3: 渲染前日志 -->
+              {{ logMessageRender(message) }}
               <p class="whitespace-pre-wrap">{{ message.text }}</p>
               <div class="text-xs opacity-75 mt-2">
                 {{ formatTime(message.createdAt) }}
@@ -409,6 +411,16 @@ const formatTime = (dateString: string) => {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+const logMessageRender = (message: Message) => {
+  console.log('🎨 渲染消息:', {
+    id: message.id,
+    type: message.type,
+    textLength: message.text?.length,
+    textPreview: message.text?.substring(0, 50) + '...'
+  })
+  return '' // 返回空字符串，不影响显示
 }
 
 onMounted(async () => {

@@ -161,6 +161,9 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     // 发送消息
+// 在 stores/chat.ts 的 sendMessage 方法中添加日志
+
+// 发送消息
     const sendMessage = async (text: string) => {
         if (!currentSession.value) {
             error.value = '没有活动会话'
@@ -181,14 +184,29 @@ export const useChatStore = defineStore('chat', () => {
             }
             messages.value.push(userMessage)
 
-            // 发送到服务器
+            // 步骤1: API调用日志
+            console.log('🚀 发送消息到API:', text)
             const response = await chatAPI.sendMessage(currentSession.value.id, text)
+
+            // 步骤1: API响应日志
+            console.log('✅ API响应:', response.data)
+            console.log('📨 aiMessage:', response.data.aiMessage)
+
+            // 步骤2: 存储到messages数组前的日志
+            console.log('💾 存储前messages长度:', messages.value.length)
 
             // 更新用户消息的真实ID
             const lastUserMsgIndex = messages.value.length - 1
-            messages.value[lastUserMsgIndex] = response.data
+            if (response.data.aiMessage) {
+                messages.value.push(response.data.aiMessage)
+            }
+
+            // 步骤2: 存储后的日志
+            console.log('💾 存储后messages长度:', messages.value.length)
+            console.log('💾 最新消息:', messages.value[messages.value.length - 1])
 
         } catch (err: any) {
+            console.error('❌ 发送消息失败:', err)
             error.value = err.response?.data?.message || '发送消息失败'
             throw err
         } finally {
