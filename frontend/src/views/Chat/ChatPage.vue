@@ -3,7 +3,7 @@
     <!-- 侧边栏 -->
     <div :class="sidebarClasses">
       <!-- 侧边栏头部 - 固定，与右侧标题栏等高 -->
-      <div class="flex-shrink-0 h-20 p-4 border-b border-primary-200 bg-white flex items-center">
+      <div class="flex-shrink-1 h-20 p-4 border-b border-primary-200 bg-white flex items-center">
         <div v-if="!uiStore.sidebarCollapsed" class="flex items-center justify-between w-full">
           <h1 class="text-xl font-bold text-primary-900">Interview Coach</h1>
           <button
@@ -27,8 +27,8 @@
         </div>
       </div>
 
-      <!-- 会话列表 - 可滚动区域 -->
-      <div class="flex-1 overflow-y-auto p-4">
+      <!-- 会话列表 - 可滚动区域，添加独立滚动条 -->
+      <div class="flex-1 overflow-y-auto sessions-scrollable p-4">
         <div v-if="!uiStore.sidebarCollapsed">
           <!-- 新建面试按钮 -->
           <BaseButton
@@ -48,31 +48,28 @@
             <div v-if="chatStore.loading" class="text-center text-primary-500 py-4">
               加载中...
             </div>
-            <div v-else-if="chatStore.sessions.length === 0" class="text-center text-primary-400 py-4">
-              暂无面试记录
+            <div v-else-if="chatStore.sessions.length === 0" class="text-center text-primary-500 py-8">
+              <svg class="w-12 h-12 text-primary-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              <p class="text-sm">暂无面试记录</p>
+              <p class="text-xs text-primary-400 mt-1">开始第一次面试吧！</p>
             </div>
             <div v-else>
               <div
                   v-for="session in chatStore.sessions"
                   :key="session.id"
                   :class="sessionItemClasses(session)"
-                  @click="setCurrentSession(session)"
+                  @click="selectSession(session.id)"
               >
                 <div class="flex-1 min-w-0">
-                  <p class="text-sm font-medium truncate">
-                    {{ session.title || '面试会话' }}
-                  </p>
-                  <p class="text-xs opacity-75">
-                    {{ getModeDescription(session.mode) }}
-                  </p>
-                  <p class="text-xs opacity-60">
-                    {{ formatTime(session.createdAt) }}
-                  </p>
+                  <p class="text-sm font-medium truncate">{{ session.title }}</p>
+                  <p class="text-xs opacity-75 truncate">{{ formatTime(session.createdAt) }}</p>
                 </div>
-                <div class="flex items-center space-x-1">
+                <div class="flex items-center space-x-2 ml-2">
                   <span
-                      :class="sessionStatusClasses(session)"
-                      class="px-1.5 py-0.5 text-xs font-medium rounded"
+                      :class="session.completed ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'"
+                      class="px-2 py-1 text-xs font-medium rounded-full whitespace-nowrap"
                   >
                     {{ session.completed ? '完成' : '进行中' }}
                   </span>
@@ -105,7 +102,7 @@
       </div>
 
       <!-- 用户信息 - 固定底部 -->
-      <div class="flex-shrink-0 border-t border-primary-200 p-4 bg-white">
+      <div class="flex-shrink-0 border-t border-primary-200 p-10 bg-white">
         <div v-if="!uiStore.sidebarCollapsed" class="flex items-center justify-between">
           <div class="flex items-center space-x-3">
             <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
@@ -126,44 +123,17 @@
               title="退出登录"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
           </button>
-        </div>
-        <div v-else class="flex justify-center">
-          <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
-            {{ userInitials }}
-          </div>
         </div>
       </div>
     </div>
 
-    <!-- 移动端遮罩 -->
-    <div
-        v-if="uiStore.mobileMenuOpen"
-        class="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
-        @click="uiStore.closeMobileMenu"
-    ></div>
-
-    <!-- 主内容区域 -->
-    <div class="flex-1 flex flex-col min-w-0">
-      <!-- 顶部导航 - 固定 -->
-      <div class="flex-shrink-0 bg-white border-b border-primary-200 p-4 md:hidden">
-        <div class="flex items-center justify-between">
-          <button
-              @click="uiStore.toggleMobileMenu"
-              class="p-2 text-primary-500 hover:text-primary-700 rounded-lg hover:bg-primary-100"
-          >
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <h1 class="text-lg font-semibold text-primary-900">Interview Coach</h1>
-          <div class="w-10"></div>
-        </div>
-      </div>
-
-      <!-- 欢迎界面 -->
+    <!-- 主聊天区域 -->
+    <div class="flex-1 flex flex-col min-h-0">
+      <!-- 空状态 - 无当前会话 -->
       <div v-if="!chatStore.currentSession" class="flex-1 flex items-center justify-center">
         <div class="text-center max-w-md mx-auto p-8">
           <div class="w-24 h-24 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -210,8 +180,8 @@
           </div>
         </div>
 
-        <!-- 消息列表 - 可滚动区域 -->
-        <div ref="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-4">
+        <!-- 消息列表 - 可滚动区域，独立于左侧滚动 -->
+        <div ref="messagesContainer" class="flex-1 overflow-y-auto chat-messages-scrollable p-4 space-y-4">
           <div v-if="chatStore.loadingMessages" class="text-center text-primary-500">
             加载消息中...
           </div>
@@ -307,68 +277,49 @@ const authStore = useAuthStore()
 const chatStore = useChatStore()
 const uiStore = useUIStore()
 
+// 响应式引用
 const messageText = ref('')
 const messagesContainer = ref<HTMLElement>()
 
-// 🔧 输入框功能核心计算属性
-// 检查会话是否已完成
-const isSessionCompleted = computed(() => {
-  if (!chatStore.currentSession) return false
-
-  // 基于 isActive 字段判断（最可靠）
-  return chatStore.currentSession.isActive === false ||
-      chatStore.currentSession.completed === true
-})
-
-// 检查输入是否应该被禁用
-const isInputDisabled = computed(() => {
-  return chatStore.sending || isSessionCompleted.value
-})
-
-// 检查提交按钮是否应该被禁用
-const isSubmitDisabled = computed(() => {
-  return !messageText.value.trim() ||
-      chatStore.sending ||
-      isSessionCompleted.value
-})
-
-// 动态输入框样式
-const textareaClasses = computed(() => {
-  const baseClasses = 'w-full p-3 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200'
-
-  if (isSessionCompleted.value) {
-    return `${baseClasses} border-gray-300 bg-gray-100 text-gray-500 cursor-not-allowed`
-  }
-
-  if (chatStore.sending) {
-    return `${baseClasses} border-blue-300 bg-blue-50 text-gray-700 cursor-wait`
-  }
-
-  return `${baseClasses} border-primary-200 focus:ring-accent-500 focus:border-accent-500`
-})
-
-// 动态占位符文本
-const inputPlaceholder = computed(() => {
-  if (isSessionCompleted.value) {
-    return '面试已结束，无法继续输入'
-  }
-
-  if (chatStore.sending) {
-    return 'AI正在回复中...'
-  }
-
-  return '输入你的回答...'
-})
-
-// 其他计算属性
+// 计算属性
 const userInitials = computed(() => {
   const username = authStore.user?.username || ''
   return username.slice(0, 2).toUpperCase()
 })
 
+const isSessionCompleted = computed(() => {
+  return chatStore.currentSession?.completed || false
+})
+
+const isInputDisabled = computed(() => {
+  return isSessionCompleted.value || chatStore.sending
+})
+
+const isSubmitDisabled = computed(() => {
+  return !messageText.value.trim() || chatStore.sending || isSessionCompleted.value
+})
+
+const inputPlaceholder = computed(() => {
+  if (isSessionCompleted.value) {
+    return '会话已结束'
+  }
+  return chatStore.sending ? '发送中...' : '输入您的回答... (Enter发送，Shift+Enter换行)'
+})
+
+const textareaClasses = computed(() => {
+  return [
+    'w-full px-4 py-3 border border-primary-300 rounded-lg',
+    'focus:ring-2 focus:ring-primary-500 focus:border-transparent',
+    'resize-none',
+    isInputDisabled.value
+        ? 'bg-primary-50 text-primary-400 cursor-not-allowed'
+        : 'bg-white text-primary-900'
+  ].join(' ')
+})
+
 const sidebarClasses = computed(() => {
   return [
-    'transition-all duration-300',
+    'bg-white border-r border-primary-200 flex flex-col transition-all duration-300 ease-in-out',
     uiStore.sidebarCollapsed ? 'w-16' : 'w-80',
     'md:relative absolute inset-y-0 left-0 z-50',
     uiStore.mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
@@ -452,70 +403,57 @@ const messageClasses = (message: Message) => {
 const messageBubbleClasses = (message: Message) => {
   const baseClasses = 'max-w-xs lg:max-w-md px-4 py-3 rounded-lg'
   const typeClasses = message.type === 'USER'
-      ? 'bg-accent-500 text-white'
-      : 'bg-primary-100 text-primary-900'
+      ? 'bg-primary-600 text-white'
+      : 'bg-white border border-primary-200 text-primary-900'
 
   return `${baseClasses} ${typeClasses}`
 }
 
-const setCurrentSession = async (session: Session) => {
-  await chatStore.setCurrentSession(session)
-  uiStore.closeMobileMenu()
+const selectSession = async (sessionId: string) => {
+  try {
+    await chatStore.setCurrentSession(sessionId)
+    await scrollToBottom()
+  } catch (error) {
+    uiStore.addNotification('error', '切换会话失败')
+  }
 }
 
-const deleteSession = async (sessionId: number) => {
-  uiStore.openDeleteConfirmModal(sessionId, async () => {
-    await chatStore.deleteSession(sessionId)
-    uiStore.addNotification('success', '会话已删除')
+const deleteSession = (sessionId: string) => {
+  uiStore.showDeleteConfirm(() => chatStore.deleteSession(sessionId))
+}
+
+const handleStartInterview = async (mode: SessionMode) => {
+  try {
+    await chatStore.startNewSession(mode)
+    closeInterviewModeModal()
+    await scrollToBottom()
+  } catch (error) {
+    uiStore.addNotification('error', '创建面试会话失败')
+  }
+}
+
+const logout = async () => {
+  try {
+    await authStore.logout()
+    await router.push('/login')
+  } catch (error) {
+    uiStore.addNotification('error', '退出失败')
+  }
+}
+
+const formatTime = (date: string | Date) => {
+  return new Date(date).toLocaleDateString('zh-CN', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
   })
 }
 
-const handleStartInterview = async (request: any) => {
-  try {
-    await chatStore.createSession(request)
-    closeInterviewModeModal()
-    uiStore.addNotification('success', '面试已开始')
-  } catch (error: any) {
-    console.error('创建面试失败:', error)
-    const errorMessage = error.response?.data?.message ||
-        error.response?.data?.error ||
-        error.message ||
-        '创建面试失败，请重试'
-    uiStore.addNotification('error', errorMessage)
-  }
-}
-
-const logout = () => {
-  authStore.logout()
-  router.push('/')
-  uiStore.addNotification('success', '已退出登录')
-}
-
-// 格式化时间
-const formatTime = (dateString: string) => {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-
-  if (days === 0) {
-    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  } else if (days === 1) {
-    return '昨天'
-  } else if (days < 7) {
-    return `${days}天前`
-  } else {
-    return date.toLocaleDateString('zh-CN')
-  }
-}
-
-// 获取模式描述
-const getModeDescription = (mode: string | SessionMode) => {
-  if (!mode) {
-    return '未知模式'
-  }
-
-  const modeStr = typeof mode === 'string' ? mode : mode.toString()
+const getModeDescription = (mode: SessionMode | string) => {
+  const modeStr = typeof mode === 'object' && mode !== null
+      ? mode.toString()
+      : mode
 
   switch (modeStr) {
     case 'SINGLE_TOPIC':
@@ -578,7 +516,60 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* 滚动条样式 */
+/* 聊天消息区域的滚动条样式 */
+.chat-messages-scrollable::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-messages-scrollable::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.chat-messages-scrollable::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.chat-messages-scrollable::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* 会话历史区域的独立滚动条样式 */
+.sessions-scrollable::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sessions-scrollable::-webkit-scrollbar-track {
+  background: #f8fafc;
+  border-radius: 3px;
+}
+
+.sessions-scrollable::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border-radius: 3px;
+}
+
+.sessions-scrollable::-webkit-scrollbar-thumb:hover {
+  background: #cbd5e1;
+}
+
+/* 确保会话历史区域有足够的高度来显示滚动条 */
+.sessions-scrollable {
+  min-height: 0;
+  max-height: calc(100vh - 200px); /* 减去头部和底部固定区域的高度 */
+}
+
+/* 输入框动画 */
+textarea {
+  transition: all 0.2s ease-in-out;
+}
+
+textarea:disabled {
+  opacity: 0.7;
+  transform: scale(0.99);
+}
+
+/* 通用滚动条样式优化 */
 .overflow-y-auto::-webkit-scrollbar {
   width: 6px;
 }
@@ -594,15 +585,5 @@ onMounted(async () => {
 
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
-}
-
-/* 输入框动画 */
-textarea {
-  transition: all 0.2s ease-in-out;
-}
-
-textarea:disabled {
-  opacity: 0.7;
-  transform: scale(0.99);
 }
 </style>
