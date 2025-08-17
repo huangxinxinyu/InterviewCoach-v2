@@ -358,17 +358,16 @@ const startInterview = async () => {
     }
 
     emit('start-interview', request)
-    resetModal()
   } catch (error) {
     console.error('构建面试请求失败:', error)
-  } finally {
     loading.value = false
   }
 }
 
-// 监听显示状态变化，重置模态框
+
 watch(() => props.show, (newShow) => {
   if (!newShow) {
+    loading.value = false
     resetModal()
   }
 })
