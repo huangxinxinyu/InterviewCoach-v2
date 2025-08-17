@@ -107,7 +107,6 @@ public class ChatService {
                     request.getMode(),
                     request.getExpectedQuestionCount()
             );
-//            System.out.println(request.getExpectedQuestionCount());
             // 为不同模式初始化题目队列
             if (request.getMode() == SessionMode.STRUCTURED_SET) {
                 initQuestionQueue(session.getId(), request.getQuestionIds());
@@ -328,8 +327,17 @@ public class ChatService {
         // 增加已完成题目数量
         sessionService.incrementCompletedQuestionCount(sessionId);
 
+        // 对于STRUCTURED_SET和STRUCTURED_TEMPLATE模式，移除刚回答的题目
+        if (session.getMode() == SessionMode.STRUCTURED_SET ||
+                session.getMode() == SessionMode.STRUCTURED_TEMPLATE) {
+            removeCurrentQuestionFromQueue(sessionId);
+        }
+
+        // 重新获取更新后的session
+        session = sessionMapper.findById(sessionId).get();
+
         // 检查是否已完成所有题目
-        if (session.getCompletedQuestionCount() + 1 >= session.getExpectedQuestionCount()) {
+        if (session.getCompletedQuestionCount() >= session.getExpectedQuestionCount()) {
             // 生成最终评价
             String finalEvaluation = generateFinalEvaluation(sessionId, userAnswer);
             MessageDTO aiMessage = saveAIMessage(sessionId, finalEvaluation);
@@ -383,7 +391,6 @@ public class ChatService {
         }
 
         String prompt = buildFirstQuestionPrompt(request.getMode(), selectedQuestion);
-        System.out.println(prompt);
         return callOpenAI(prompt);
     }
 
@@ -403,25 +410,46 @@ public class ChatService {
             case SINGLE_TOPIC:
                 return selectQuestionByTag(userId, request.getTagId());
             case STRUCTURED_SET:
-                return selectQuestionFromQueue(sessionId);
+                return peekQuestionFromQueue(sessionId);
             case STRUCTURED_TEMPLATE:
-                return selectQuestionFromQueue(sessionId); // 模板模式也使用队列
+                return peekQuestionFromQueue(sessionId); // 模板模式也使用队列
             default:
                 return selectQuestionByTemplate(userId);
         }
+    }
+
+    private Question peekQuestionFromQueue(Long sessionId) {
+        List<Long> queue = sessionQuestionQueues.get(sessionId);
+        if (queue == null || queue.isEmpty()) {
+            return null;
+        }
+
+        Long questionId = queue.get(0);  // 使用get(0)而不是remove(0)
+        return questionMapper.findById(questionId).orElse(null);
     }
 
     /**
      * 从题目队列中选择题目（structured_set模式）
      */
     private Question selectQuestionFromQueue(Long sessionId) {
+        System.out.println("------------------");
+        System.out.println(sessionQuestionQueues.get(sessionId));
         List<Long> queue = sessionQuestionQueues.get(sessionId);
         if (queue == null || queue.isEmpty()) {
             return null;
         }
 
-        Long questionId = queue.remove(0);
+        Long questionId = queue.get(0);
+        System.out.println("------------------");
+        System.out.println(questionId);
         return questionMapper.findById(questionId).orElse(null);
+    }
+
+    private void removeCurrentQuestionFromQueue(Long sessionId) {
+        List<Long> queue = sessionQuestionQueues.get(sessionId);
+        if (queue != null && !queue.isEmpty()) {
+            queue.remove(0);  // 移除已经问过的题目
+        }
     }
 
     /**
@@ -486,6 +514,7 @@ public class ChatService {
         Question nextQuestion = getNextQuestion(sessionId);
 
         if (nextQuestion == null) {
+            System.out.println("-------------no more questions left");
             return generateFinalEvaluation(sessionId, userAnswer);
         }
 
@@ -580,7 +609,7 @@ public class ChatService {
         if (request.getQuestionSetId() != null) {
             // 如果提供了questionSetId，从题集获取题目列表
             List<Long> questionIds = questionSetService.getQuestionIdsBySetId(request.getQuestionSetId());
-            System.out.println(questionIds.size());
+            System.out.println("-------------------------questions: " + questionIds.size());
             if (questionIds.isEmpty()) {
                 throw new RuntimeException("题集中没有题目");
             }
@@ -683,6 +712,7 @@ public class ChatService {
      * 调用OpenAI API
      */
     private String callOpenAI(String prompt) {
+        System.out.println(prompt);
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
