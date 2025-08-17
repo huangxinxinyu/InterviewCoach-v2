@@ -1,103 +1,128 @@
 <template>
-  <div class="h-screen flex bg-white">
+  <div class="h-screen bg-primary-50 flex overflow-hidden">
     <!-- 侧边栏 -->
-    <div :class="sidebarClasses" class="bg-primary-50 border-r border-primary-200 flex flex-col">
-      <!-- 侧边栏头部 -->
-      <div class="p-4 border-b border-primary-200">
-        <div class="flex items-center justify-between">
-          <h1 v-if="!uiStore.sidebarCollapsed" class="font-semibold text-primary-900 truncate">Interview Coach</h1>
+    <div :class="sidebarClasses">
+      <!-- 侧边栏头部 - 固定，与右侧标题栏等高 -->
+      <div class="flex-shrink-0 h-20 p-4 border-b border-primary-200 bg-white flex items-center">
+        <div v-if="!uiStore.sidebarCollapsed" class="flex items-center justify-between w-full">
+          <h1 class="text-xl font-bold text-primary-900">Interview Coach</h1>
           <button
               @click="toggleSidebar"
-              class="p-1 text-primary-600 hover:text-primary-900 rounded-md hover:bg-primary-100"
-              :title="uiStore.sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+              class="p-2 text-primary-500 hover:text-primary-700 rounded-lg hover:bg-primary-100"
           >
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            </svg>
+          </button>
+        </div>
+        <div v-else class="flex justify-center w-full">
+          <button
+              @click="toggleSidebar"
+              class="p-2 text-primary-500 hover:text-primary-700 rounded-lg hover:bg-primary-100"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
             </svg>
           </button>
         </div>
       </div>
 
-      <!-- 新建面试按钮 -->
-      <div class="p-4">
-        <button
-            v-if="uiStore.sidebarCollapsed"
-            @click="openInterviewModeModal"
-            class="w-full h-10 bg-primary-600 text-white rounded-lg hover:bg-primary-700 flex items-center justify-center transition-colors"
-            title="新建面试"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-          </svg>
-        </button>
-        <BaseButton
-            v-else
-            variant="primary"
-            size="sm"
-            full-width
-            @click="openInterviewModeModal"
-        >
-          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-          </svg>
-          新建面试
-        </BaseButton>
-      </div>
-
-      <!-- 会话列表 -->
-      <div class="flex-1 overflow-y-auto">
-        <div v-if="chatStore.loading" class="p-4 text-center text-primary-500">
-          加载中...
-        </div>
-        <div v-else-if="!chatStore.hasActiveSessions" class="p-4 text-center text-primary-500">
-          暂无面试记录
-        </div>
-        <div v-else class="space-y-1 p-2">
-          <div
-              v-for="session in chatStore.sessions"
-              :key="session.id"
-              :class="sessionItemClasses(session)"
-              @click="setCurrentSession(session)"
+      <!-- 会话列表 - 可滚动区域 -->
+      <div class="flex-1 overflow-y-auto p-4">
+        <div v-if="!uiStore.sidebarCollapsed">
+          <!-- 新建面试按钮 -->
+          <BaseButton
+              variant="primary"
+              class="w-full mb-4"
+              @click="openInterviewModeModal"
           >
-            <div v-if="uiStore.sidebarCollapsed" class="mx-auto" :title="session.title">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            开始新面试
+          </BaseButton>
+
+          <!-- 会话历史 -->
+          <div class="space-y-2">
+            <h3 class="text-sm font-medium text-primary-700 mb-2">面试历史</h3>
+            <div v-if="chatStore.loading" class="text-center text-primary-500 py-4">
+              加载中...
             </div>
-            <div v-else class="flex-1 min-w-0">
-              <div class="font-medium text-sm text-primary-900 truncate">
-                {{ session.title }}
-              </div>
-              <div class="text-xs text-primary-500 truncate">
-                {{ getModeDescription(session.mode) }} · {{ formatDate(session.createdAt) }}
+            <div v-else-if="chatStore.sessions.length === 0" class="text-center text-primary-400 py-4">
+              暂无面试记录
+            </div>
+            <div v-else>
+              <div
+                  v-for="session in chatStore.sessions"
+                  :key="session.id"
+                  :class="sessionItemClasses(session)"
+                  @click="setCurrentSession(session)"
+              >
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium truncate">
+                    {{ session.title || '面试会话' }}
+                  </p>
+                  <p class="text-xs opacity-75">
+                    {{ getModeDescription(session.mode) }}
+                  </p>
+                  <p class="text-xs opacity-60">
+                    {{ formatTime(session.createdAt) }}
+                  </p>
+                </div>
+                <div class="flex items-center space-x-1">
+                  <span
+                      :class="sessionStatusClasses(session)"
+                      class="px-1.5 py-0.5 text-xs font-medium rounded"
+                  >
+                    {{ session.completed ? '完成' : '进行中' }}
+                  </span>
+                  <button
+                      @click.stop="deleteSession(session.id)"
+                      class="p-1 text-red-400 hover:text-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
               </div>
             </div>
-            <button
-                v-if="!uiStore.sidebarCollapsed"
-                @click.stop="deleteSession(session.id)"
-                class="opacity-0 group-hover:opacity-100 text-primary-400 hover:text-red-500 p-1 transition-all"
-                :title="`删除 ${session.title}`"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </button>
           </div>
         </div>
+
+        <!-- 折叠状态下的新建按钮 -->
+        <div v-else class="flex flex-col items-center space-y-4">
+          <button
+              @click="openInterviewModeModal"
+              class="p-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+              title="开始新面试"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      <!-- 用户信息区域 -->
-      <div class="p-4 border-t border-primary-200">
-        <div v-if="uiStore.sidebarCollapsed" class="flex flex-col space-y-2">
-          <div
-              class="w-8 h-8 bg-accent-600 rounded-full flex items-center justify-center text-white text-sm mx-auto cursor-pointer hover:bg-accent-700 transition-colors"
-              :title="authStore.user?.username || 'User'"
-          >
-            {{ userInitials }}
+      <!-- 用户信息 - 固定底部 -->
+      <div class="flex-shrink-0 border-t border-primary-200 p-4 bg-white">
+        <div v-if="!uiStore.sidebarCollapsed" class="flex items-center justify-between">
+          <div class="flex items-center space-x-3">
+            <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+              {{ userInitials }}
+            </div>
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-primary-900 truncate">
+                {{ authStore.user?.username }}
+              </p>
+              <p class="text-xs text-primary-500 truncate">
+                {{ authStore.user?.email }}
+              </p>
+            </div>
           </div>
           <button
               @click="logout"
-              class="p-2 text-primary-600 hover:text-primary-900 rounded-md hover:bg-primary-100 transition-colors"
+              class="p-2 text-primary-500 hover:text-primary-700 rounded-lg hover:bg-primary-100"
               title="退出登录"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -105,27 +130,39 @@
             </svg>
           </button>
         </div>
-        <div v-else class="space-y-2">
-          <div class="flex items-center space-x-3 p-2 rounded-md hover:bg-primary-100 transition-colors">
-            <div class="w-8 h-8 bg-accent-600 rounded-full flex items-center justify-center text-white text-sm">
-              {{ userInitials }}
-            </div>
-            <span class="text-sm text-primary-700 truncate">{{ authStore.user?.username || 'User' }}</span>
-          </div>
-          <div class="flex space-x-1">
-            <button
-                @click="logout"
-                class="flex-1 p-2 text-primary-600 hover:text-primary-900 rounded-md hover:bg-primary-100 text-sm transition-colors"
-            >
-              退出
-            </button>
+        <div v-else class="flex justify-center">
+          <div class="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+            {{ userInitials }}
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 主内容区 -->
-    <div class="flex-1 flex flex-col">
+    <!-- 移动端遮罩 -->
+    <div
+        v-if="uiStore.mobileMenuOpen"
+        class="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+        @click="uiStore.closeMobileMenu"
+    ></div>
+
+    <!-- 主内容区域 -->
+    <div class="flex-1 flex flex-col min-w-0">
+      <!-- 顶部导航 - 固定 -->
+      <div class="flex-shrink-0 bg-white border-b border-primary-200 p-4 md:hidden">
+        <div class="flex items-center justify-between">
+          <button
+              @click="uiStore.toggleMobileMenu"
+              class="p-2 text-primary-500 hover:text-primary-700 rounded-lg hover:bg-primary-100"
+          >
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <h1 class="text-lg font-semibold text-primary-900">Interview Coach</h1>
+          <div class="w-10"></div>
+        </div>
+      </div>
+
       <!-- 欢迎界面 -->
       <div v-if="!chatStore.currentSession" class="flex-1 flex items-center justify-center">
         <div class="text-center max-w-md mx-auto p-8">
@@ -150,13 +187,13 @@
       </div>
 
       <!-- 聊天界面 -->
-      <div v-else class="flex-1 flex flex-col">
-        <!-- 聊天头部 -->
-        <div class="p-4 border-b border-primary-200 bg-white">
-          <div class="flex items-center justify-between">
+      <div v-else class="flex-1 flex flex-col min-h-0">
+        <!-- 聊天头部 - 固定，与左侧标题栏等高 -->
+        <div class="flex-shrink-0 h-20 p-4 border-b border-primary-200 bg-white flex items-center">
+          <div class="flex items-center justify-between w-full">
             <div>
               <h2 class="text-lg font-semibold text-primary-900">
-                {{ chatStore.currentSession.title }}
+                {{ chatStore.currentSession.title || '面试会话' }}
               </h2>
               <p class="text-sm text-primary-500">
                 {{ getModeDescription(chatStore.currentSession.mode) }}
@@ -164,7 +201,7 @@
             </div>
             <div class="flex items-center space-x-2">
               <span
-                  :class="sessionStatusClasses"
+                  :class="sessionStatusClasses(chatStore.currentSession)"
                   class="px-2 py-1 text-xs font-medium rounded-full"
               >
                 {{ chatStore.currentSession.completed ? '已完成' : '进行中' }}
@@ -173,8 +210,8 @@
           </div>
         </div>
 
-        <!-- 消息列表 -->
-        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+        <!-- 消息列表 - 可滚动区域 -->
+        <div ref="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-4">
           <div v-if="chatStore.loadingMessages" class="text-center text-primary-500">
             加载消息中...
           </div>
@@ -184,8 +221,6 @@
               :class="messageClasses(message)"
           >
             <div :class="messageBubbleClasses(message)">
-              <!-- 步骤3: 渲染前日志 -->
-<!--              {{ logMessageRender(message) }}-->
               <p class="whitespace-pre-wrap">{{ message.text }}</p>
               <div class="text-xs opacity-75 mt-2">
                 {{ formatTime(message.createdAt) }}
@@ -194,16 +229,29 @@
           </div>
         </div>
 
-        <!-- 输入区域 -->
-        <div class="border-t border-primary-200 p-4">
+        <!-- 🔧 专注输入框功能的核心区域 - 固定底部 -->
+        <div class="flex-shrink-0 border-t border-primary-200 p-4">
+          <!-- 会话结束状态提示 -->
+          <div v-if="isSessionCompleted" class="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div class="flex items-center">
+              <svg class="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span class="text-green-700 font-medium">面试已结束</span>
+            </div>
+            <p class="text-green-600 text-sm mt-1">本次面试会话已完成，输入框已禁用。</p>
+          </div>
+
+          <!-- 输入表单 -->
           <form @submit.prevent="sendMessage" class="flex space-x-2">
             <div class="flex-1">
               <textarea
                   v-model="messageText"
-                  placeholder="输入你的回答..."
-                  class="w-full p-3 border border-primary-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent"
+                  :placeholder="inputPlaceholder"
+                  :disabled="isInputDisabled"
+                  :class="textareaClasses"
                   rows="3"
-                  :disabled="chatStore.sending"
                   @keydown.enter.exact.prevent="sendMessage"
                   @keydown.enter.shift.exact="addNewLine"
               />
@@ -211,11 +259,12 @@
             <BaseButton
                 type="submit"
                 variant="primary"
-                :disabled="!messageText.trim() || chatStore.sending"
+                :disabled="isSubmitDisabled"
                 :loading="chatStore.sending"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
               </svg>
             </BaseButton>
           </form>
@@ -241,7 +290,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
@@ -259,8 +308,59 @@ const chatStore = useChatStore()
 const uiStore = useUIStore()
 
 const messageText = ref('')
+const messagesContainer = ref<HTMLElement>()
 
-// 计算属性
+// 🔧 输入框功能核心计算属性
+// 检查会话是否已完成
+const isSessionCompleted = computed(() => {
+  if (!chatStore.currentSession) return false
+
+  // 基于 isActive 字段判断（最可靠）
+  return chatStore.currentSession.isActive === false ||
+      chatStore.currentSession.completed === true
+})
+
+// 检查输入是否应该被禁用
+const isInputDisabled = computed(() => {
+  return chatStore.sending || isSessionCompleted.value
+})
+
+// 检查提交按钮是否应该被禁用
+const isSubmitDisabled = computed(() => {
+  return !messageText.value.trim() ||
+      chatStore.sending ||
+      isSessionCompleted.value
+})
+
+// 动态输入框样式
+const textareaClasses = computed(() => {
+  const baseClasses = 'w-full p-3 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200'
+
+  if (isSessionCompleted.value) {
+    return `${baseClasses} border-gray-300 bg-gray-100 text-gray-500 cursor-not-allowed`
+  }
+
+  if (chatStore.sending) {
+    return `${baseClasses} border-blue-300 bg-blue-50 text-gray-700 cursor-wait`
+  }
+
+  return `${baseClasses} border-primary-200 focus:ring-accent-500 focus:border-accent-500`
+})
+
+// 动态占位符文本
+const inputPlaceholder = computed(() => {
+  if (isSessionCompleted.value) {
+    return '面试已结束，无法继续输入'
+  }
+
+  if (chatStore.sending) {
+    return 'AI正在回复中...'
+  }
+
+  return '输入你的回答...'
+})
+
+// 其他计算属性
 const userInitials = computed(() => {
   const username = authStore.user?.username || ''
   return username.slice(0, 2).toUpperCase()
@@ -275,15 +375,55 @@ const sidebarClasses = computed(() => {
   ].join(' ')
 })
 
-const sessionStatusClasses = computed(() => {
-  if (!chatStore.currentSession) return ''
-
-  return chatStore.currentSession.completed
+const sessionStatusClasses = (session: Session) => {
+  return session.completed || !session.isActive
       ? 'bg-green-100 text-green-800'
       : 'bg-blue-100 text-blue-800'
-})
+}
 
-// 方法
+// 🔧 输入框功能核心方法
+const sendMessage = async () => {
+  // 检查会话状态
+  if (isSessionCompleted.value) {
+    uiStore.addNotification('warning', '当前会话已结束，无法发送消息')
+    return
+  }
+
+  if (!messageText.value.trim() || chatStore.sending) return
+
+  const text = messageText.value.trim()
+  messageText.value = ''
+
+  try {
+    await chatStore.sendMessage(text)
+
+    // 🔧 新增：发送成功后自动滚动到底部
+    await scrollToBottom()
+  } catch (error) {
+    uiStore.addNotification('error', '发送失败，请重试')
+    // 发送失败时恢复输入内容
+    messageText.value = text
+  }
+}
+
+// 🔧 新增：滚动到底部的方法
+const scrollToBottom = async () => {
+  await nextTick()
+  if (messagesContainer.value) {
+    messagesContainer.value.scrollTo({
+      top: messagesContainer.value.scrollHeight,
+      behavior: 'smooth'
+    })
+  }
+}
+
+const addNewLine = () => {
+  if (!isSessionCompleted.value) {
+    messageText.value += '\n'
+  }
+}
+
+// 其他方法
 const toggleSidebar = () => {
   uiStore.toggleSidebar()
 }
@@ -320,6 +460,7 @@ const messageBubbleClasses = (message: Message) => {
 
 const setCurrentSession = async (session: Session) => {
   await chatStore.setCurrentSession(session)
+  uiStore.closeMobileMenu()
 }
 
 const deleteSession = async (sessionId: number) => {
@@ -327,23 +468,6 @@ const deleteSession = async (sessionId: number) => {
     await chatStore.deleteSession(sessionId)
     uiStore.addNotification('success', '会话已删除')
   })
-}
-
-const sendMessage = async () => {
-  if (!messageText.value.trim() || chatStore.sending) return
-
-  const text = messageText.value.trim()
-  messageText.value = ''
-
-  try {
-    await chatStore.sendMessage(text)
-  } catch (error) {
-    uiStore.addNotification('error', '发送失败，请重试')
-  }
-}
-
-const addNewLine = () => {
-  messageText.value += '\n'
 }
 
 const handleStartInterview = async (request: any) => {
@@ -367,55 +491,118 @@ const logout = () => {
   uiStore.addNotification('success', '已退出登录')
 }
 
-// Fixed getModeDescription function
+// 格式化时间
+const formatTime = (dateString: string) => {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+
+  if (days === 0) {
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  } else if (days === 1) {
+    return '昨天'
+  } else if (days < 7) {
+    return `${days}天前`
+  } else {
+    return date.toLocaleDateString('zh-CN')
+  }
+}
+
+// 获取模式描述
 const getModeDescription = (mode: string | SessionMode) => {
-  // 首先检查 mode 是否存在
   if (!mode) {
     return '未知模式'
   }
 
-  // Handle both string and enum values
   const modeStr = typeof mode === 'string' ? mode : mode.toString()
 
-  const descriptions: Record<string, string> = {
-    'SINGLE_TOPIC': '单主题模式',
-    'STRUCTURED_SET': '结构化题集',
-    'STRUCTURED_TEMPLATE': '智能模板'
-  }
-
-  return descriptions[modeStr] || '未知模式'
-}
-
-const formatDate = (dateString: string) => {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-  if (diffDays === 0) {
-    return '今天'
-  } else if (diffDays === 1) {
-    return '昨天'
-  } else if (diffDays < 7) {
-    return `${diffDays}天前`
-  } else {
-    return date.toLocaleDateString('zh-CN', {
-      month: 'short',
-      day: 'numeric'
-    })
+  switch (modeStr) {
+    case 'SINGLE_TOPIC':
+    case 'single_topic':
+      return '单主题模式'
+    case 'STRUCTURED_SET':
+    case 'structured_set':
+      return '结构化题集模式'
+    case 'STRUCTURED_TEMPLATE':
+    case 'structured_template':
+      return '结构化模板模式'
+    default:
+      return '未知模式'
   }
 }
 
-const formatTime = (dateString: string) => {
-  return new Date(dateString).toLocaleTimeString('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
+// 🔧 监听会话状态变化，确保输入框状态实时更新
+watch(
+    () => chatStore.currentSession,
+    (newSession) => {
+      if (newSession && isSessionCompleted.value) {
+        console.log('🔔 检测到会话已完成，输入框已禁用')
+      }
+    },
+    { deep: true }
+)
 
+// 🔧 新增：监听消息变化，自动滚动到底部
+watch(
+    () => chatStore.currentMessages,
+    async (newMessages, oldMessages) => {
+      // 当有新消息添加时，自动滚动到底部
+      if (newMessages && oldMessages && newMessages.length > oldMessages.length) {
+        // 稍微延迟一下，确保DOM已更新
+        setTimeout(async () => {
+          await scrollToBottom()
+        }, 100)
+      }
+    },
+    { deep: true }
+)
 
+// 🔧 新增：监听发送状态变化，当发送完成时滚动
+watch(
+    () => chatStore.sending,
+    async (sending, wasSending) => {
+      // 当从发送中变为不发送（发送完成）时，滚动到底部
+      if (wasSending && !sending) {
+        setTimeout(async () => {
+          await scrollToBottom()
+        }, 100)
+      }
+    }
+)
+
+// 页面初始化
 onMounted(async () => {
-  // 组件挂载时获取会话列表
   await chatStore.fetchSessions()
 })
 </script>
+
+<style scoped>
+/* 滚动条样式 */
+.overflow-y-auto::-webkit-scrollbar {
+  width: 6px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* 输入框动画 */
+textarea {
+  transition: all 0.2s ease-in-out;
+}
+
+textarea:disabled {
+  opacity: 0.7;
+  transform: scale(0.99);
+}
+</style>

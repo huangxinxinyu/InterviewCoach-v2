@@ -27,7 +27,7 @@ public class SessionService {
     @Transactional
     public SessionDTO createSession(Long userId, SessionMode mode, Integer expectedQuestionCount) {
         // 先结束用户所有活跃会话
-        sessionMapper.endAllActiveSessionsByUserId(userId);
+//        sessionMapper.endAllActiveSessionsByUserId(userId);
 
         // 创建新会话
         Session session = new Session(userId, mode, expectedQuestionCount);

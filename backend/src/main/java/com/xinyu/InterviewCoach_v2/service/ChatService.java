@@ -91,9 +91,6 @@ public class ChatService {
                         .message("请求参数无效");
             }
 
-            // 结束用户所有活跃会话
-            sessionService.endAllActiveSessionsByUserId(userId);
-
             // 为不同模式处理题目数量和题目列表
             if (request.getMode() == SessionMode.STRUCTURED_SET) {
                 handleStructuredSetMode(request);

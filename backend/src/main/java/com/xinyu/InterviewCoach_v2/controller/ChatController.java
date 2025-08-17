@@ -227,6 +227,7 @@ public class ChatController {
      */
     @PostMapping("/sessions/end-all")
     public ResponseEntity<?> endAllActiveSessions(HttpServletRequest httpRequest) {
+        System.out.println("---------------------end all");
         try {
             Long userId = getUserIdFromRequest(httpRequest);
             if (userId == null) {

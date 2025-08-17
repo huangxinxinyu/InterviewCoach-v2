@@ -44,7 +44,9 @@ export const useChatStore = defineStore('chat', () => {
             userId: sessionDTO.userId,
             mode: sessionDTO.mode,
             title: generateTitle(sessionDTO.mode, sessionDTO.startedAt),
-            completed: !sessionDTO.isActive || !!sessionDTO.endedAt,
+
+            completed: sessionDTO.isActive === false,
+
             createdAt: sessionDTO.startedAt,
             updatedAt: sessionDTO.endedAt || sessionDTO.startedAt,
             // 保留原始字段
@@ -223,21 +225,79 @@ export const useChatStore = defineStore('chat', () => {
             }
             messages.value.push(userMessage)
 
-            // 步骤1: API调用日志
-            // console.log('🚀 发送消息到API:', text)
             const response = await chatAPI.sendMessage(currentSession.value.id, text)
+            console.log('📨 API响应:', response.data)
 
-            // // 步骤1: API响应日志
-            // console.log('✅ API响应:', response.data)
-            console.log('📨 aiMessage:', response.data.aiMessage)
-            //
-            // // 步骤2: 存储到messages数组前的日志
-            // console.log('💾 存储前messages长度:', messages.value.length)
-
-            // 更新用户消息的真实ID
-            const lastUserMsgIndex = messages.value.length - 1
+            // 🔧 处理 AI 回复消息
             if (response.data.aiMessage) {
                 messages.value.push(response.data.aiMessage)
+            }
+
+            // 🔧 关键修复：实时处理会话状态更新
+            if (response.data.success) {
+                // 检查是否有状态更新信息
+                if (response.data.chatInputEnabled !== undefined) {
+                    console.log('💡 后端返回 chatInputEnabled:', response.data.chatInputEnabled)
+
+                    // 如果输入被禁用，说明会话已完成
+                    if (!response.data.chatInputEnabled && currentSession.value) {
+                        console.log('🔔 会话已完成，更新状态')
+
+                        // 更新当前会话状态
+                        currentSession.value.completed = true
+                        currentSession.value.isActive = false
+
+                        // 同步更新 sessions 数组中的对应会话
+                        const sessionIndex = sessions.value.findIndex(s => s.id === currentSession.value!.id)
+                        if (sessionIndex !== -1) {
+                            sessions.value[sessionIndex] = {
+                                ...sessions.value[sessionIndex],
+                                completed: true,
+                                isActive: false
+                            }
+                        }
+
+                        console.log('✅ 会话状态已更新为完成')
+                    }
+                }
+
+                // 处理面试状态
+                if (response.data.currentState) {
+                    console.log('💡 面试状态:', response.data.currentState)
+
+                    if (response.data.currentState === 'INTERVIEW_COMPLETED' ||
+                        response.data.currentState === 'SESSION_ENDED') {
+
+                        if (currentSession.value) {
+                            currentSession.value.completed = true
+                            currentSession.value.isActive = false
+
+                            // 同步更新 sessions 数组
+                            const sessionIndex = sessions.value.findIndex(s => s.id === currentSession.value!.id)
+                            if (sessionIndex !== -1) {
+                                sessions.value[sessionIndex] = {
+                                    ...sessions.value[sessionIndex],
+                                    completed: true,
+                                    isActive: false
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 如果响应包含更新的会话信息，使用它
+                if (response.data.session) {
+                    console.log('💡 后端返回更新的会话信息:', response.data.session)
+                    const updatedSession = convertSessionDTOToSession(response.data.session)
+
+                    currentSession.value = updatedSession
+
+                    // 同步更新 sessions 数组
+                    const sessionIndex = sessions.value.findIndex(s => s.id === updatedSession.id)
+                    if (sessionIndex !== -1) {
+                        sessions.value[sessionIndex] = updatedSession
+                    }
+                }
             }
 
         } catch (err: any) {
