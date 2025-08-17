@@ -90,7 +90,31 @@ export const useChatStore = defineStore('chat', () => {
 
             sessions.value.unshift(newSession)
             currentSession.value = newSession
-            messages.value = []
+
+            // 获取会话的消息（包括第一条AI消息）
+            try {
+                const messagesResponse = await chatAPI.getMessages(newSession.id)
+                console.log('Messages Response:', messagesResponse.data)
+
+                // 正确获取消息数组：从 messagesResponse.data.data 获取
+                let messagesArray
+                if (messagesResponse.data.data) {
+                    // 如果响应格式是 {success: true, data: [...]}
+                    messagesArray = messagesResponse.data.data
+                } else if (Array.isArray(messagesResponse.data)) {
+                    // 如果直接返回数组
+                    messagesArray = messagesResponse.data
+                } else {
+                    messagesArray = []
+                }
+
+                messages.value = messagesArray
+                console.log('设置的消息列表:', messages.value)
+            } catch (msgError) {
+                console.error('获取消息失败:', msgError)
+                // 即使获取消息失败，也保持空数组，不影响会话创建
+                messages.value = []
+            }
 
             return newSession
         } catch (err: any) {
@@ -143,15 +167,33 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     // 获取会话消息
+// 获取会话消息
     const fetchMessages = async (sessionId: number) => {
         loading.value = true
         error.value = null
 
         try {
             const response = await chatAPI.getMessages(sessionId)
-            messages.value = response.data
+            console.log('fetchMessages response:', response.data)
+
+            // 正确处理后端响应格式
+            let messagesArray
+            if (response.data.data) {
+                // 如果响应格式是 {success: true, data: [...]}
+                messagesArray = response.data.data
+            } else if (Array.isArray(response.data)) {
+                // 如果直接返回数组
+                messagesArray = response.data
+            } else {
+                messagesArray = []
+            }
+
+            messages.value = messagesArray
+            console.log('fetchMessages 设置的消息列表:', messages.value)
         } catch (err: any) {
+            console.error('fetchMessages error:', err)
             error.value = err.response?.data?.message || '获取消息失败'
+            messages.value = []
         } finally {
             loading.value = false
         }
