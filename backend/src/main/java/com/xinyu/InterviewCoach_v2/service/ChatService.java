@@ -107,7 +107,7 @@ public class ChatService {
                     request.getMode(),
                     request.getExpectedQuestionCount()
             );
-
+//            System.out.println(request.getExpectedQuestionCount());
             // 为不同模式初始化题目队列
             if (request.getMode() == SessionMode.STRUCTURED_SET) {
                 initQuestionQueue(session.getId(), request.getQuestionIds());
@@ -580,6 +580,7 @@ public class ChatService {
         if (request.getQuestionSetId() != null) {
             // 如果提供了questionSetId，从题集获取题目列表
             List<Long> questionIds = questionSetService.getQuestionIdsBySetId(request.getQuestionSetId());
+            System.out.println(questionIds.size());
             if (questionIds.isEmpty()) {
                 throw new RuntimeException("题集中没有题目");
             }
