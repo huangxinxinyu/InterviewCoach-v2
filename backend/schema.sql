@@ -26,6 +26,19 @@ CREATE TABLE IF NOT EXISTS `question` (
 ENGINE = InnoDB
 COMMENT = '题目表';
 
+CREATE TABLE IF NOT EXISTS `answer` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '答案ID',
+  `question_id` BIGINT NOT NULL COMMENT '题目ID，关联question表',
+  `text` TEXT NOT NULL COMMENT '答案内容',
+  PRIMARY KEY (`id`),
+  INDEX `idx_answer_question_id` (`question_id` ASC) VISIBLE,
+  CONSTRAINT `fk_answer_question`
+    FOREIGN KEY (`question_id`)
+    REFERENCES `question` (`id`)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE)
+ENGINE = InnoDB
+COMMENT = '答案表';
 
 -- -----------------------------------------------------
 -- Table `tag`
