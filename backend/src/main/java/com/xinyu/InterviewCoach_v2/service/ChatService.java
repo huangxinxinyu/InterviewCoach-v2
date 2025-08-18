@@ -7,6 +7,7 @@ import com.xinyu.InterviewCoach_v2.dto.request.chat.SendMessageRequestDTO;
 import com.xinyu.InterviewCoach_v2.dto.request.chat.StartInterviewRequestDTO;
 import com.xinyu.InterviewCoach_v2.dto.response.chat.ChatMessageResponseDTO;
 import com.xinyu.InterviewCoach_v2.dto.response.chat.InterviewSessionResponseDTO;
+import com.xinyu.InterviewCoach_v2.entity.Answer;
 import com.xinyu.InterviewCoach_v2.entity.Message;
 import com.xinyu.InterviewCoach_v2.entity.Question;
 import com.xinyu.InterviewCoach_v2.entity.Session;
@@ -60,6 +61,9 @@ public class ChatService {
 
     @Autowired
     private QuestionSetService questionSetService;
+
+    @Autowired
+    private AnswerService answerService;
 
     @Value("${openai.api.key}")
     private String openAiApiKey;
@@ -335,8 +339,9 @@ public class ChatService {
 
         // 检查是否已完成所有题目
         if (session.getCompletedQuestionCount() >= session.getExpectedQuestionCount()) {
-            // 生成最终评价
-            String finalEvaluation = generateFinalEvaluation(sessionId, userAnswer);
+            // 生成最终评价（传入当前题目ID用于获取标准答案）
+            Long currentQuestionId = sessionCurrentQuestions.get(sessionId);
+            String finalEvaluation = generateFinalEvaluationWithAnswer(sessionId, userAnswer, currentQuestionId);
             MessageDTO aiMessage = saveAIMessage(sessionId, finalEvaluation);
 
             // 结束会话
@@ -413,6 +418,41 @@ public class ChatService {
             default:
                 return selectQuestionByTemplate(userId);
         }
+    }
+
+    /**
+     * 获取题目的标准答案
+     */
+    private String getStandardAnswerForQuestion(Long questionId) {
+        if (questionId == null) {
+            return null;
+        }
+
+        try {
+            List<Answer> answers = answerService.getAnswersByQuestionId(questionId);
+            if (!answers.isEmpty()) {
+                // 如果有多个答案，取第一个作为主要参考答案
+                // 或者可以拼接多个答案
+                if (answers.size() == 1) {
+                    return answers.get(0).getText();
+                } else {
+                    // 多个答案时，组合它们
+                    StringBuilder combinedAnswer = new StringBuilder();
+                    for (int i = 0; i < answers.size(); i++) {
+                        combinedAnswer.append("参考答案").append(i + 1).append("：\n");
+                        combinedAnswer.append(answers.get(i).getText());
+                        if (i < answers.size() - 1) {
+                            combinedAnswer.append("\n\n");
+                        }
+                    }
+                    return combinedAnswer.toString();
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("获取题目答案失败: " + e.getMessage());
+        }
+
+        return null;
     }
 
     private Question peekQuestionFromQueue(Long sessionId) {
@@ -505,25 +545,50 @@ public class ChatService {
     }
 
     /**
+     * 构建包含标准答案的反馈 prompt
+     */
+    private String buildFeedbackPromptWithAnswer(String userAnswer, Question nextQuestion, String standardAnswer) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("作为面试官，请对候选人的回答进行评价，然后提出下一个问题。\n\n");
+
+        if (standardAnswer != null && !standardAnswer.trim().isEmpty()) {
+            prompt.append("标准答案参考：\n").append(standardAnswer).append("\n\n");
+            prompt.append("候选人回答：\n").append(userAnswer).append("\n\n");
+            prompt.append("评价要求：\n");
+            prompt.append("1. 如果候选人回答与标准答案大差不差，请给予肯定的评价\n");
+            prompt.append("2. 如果候选人回答不够全面，请适当补充遗漏的重要知识点\n");
+            prompt.append("3. 如果候选人回答有错误，请温和地指出并给出正确信息\n");
+            prompt.append("4. 保持鼓励的语气，即使答案不完美也要肯定其中的亮点\n\n");
+        } else {
+            prompt.append("候选人回答：\n").append(userAnswer).append("\n\n");
+            prompt.append("评价要求：\n");
+            prompt.append("1. 基于你的专业知识对回答进行评价\n");
+            prompt.append("2. 给出建设性的反馈和建议\n");
+            prompt.append("3. 保持鼓励的语气\n\n");
+        }
+
+        prompt.append("下一个问题：\n").append(nextQuestion.getText()).append("\n\n");
+        prompt.append("请先给出简短但有价值的反馈（2-4句话），然后自然地引入下一个问题。");
+
+        return prompt.toString();
+    }
+
+    /**
      * 生成反馈和下一题
      */
     private String generateFeedbackAndNextQuestion(Long sessionId, String userAnswer) {
+        // 获取上一题的标准答案（用户刚刚回答的题目）
+        Long previousQuestionId = sessionCurrentQuestions.get(sessionId);
+        String standardAnswer = getStandardAnswerForQuestion(previousQuestionId);
+
         Question nextQuestion = getNextQuestion(sessionId);
 
         if (nextQuestion == null) {
             System.out.println("-------------no more questions left");
-            return generateFinalEvaluation(sessionId, userAnswer);
+            return generateFinalEvaluationWithAnswer(sessionId, userAnswer, previousQuestionId);
         }
 
-        String prompt = String.format(
-                "作为面试官，请对候选人的回答进行简短评价，然后提出下一个问题。\n\n" +
-                        "候选人回答：%s\n\n" +
-                        "下一个问题：%s\n\n" +
-                        "请先给出简短的反馈（2-3句话），然后自然地引入下一个问题。",
-                userAnswer,
-                nextQuestion.getText()
-        );
-
+        String prompt = buildFeedbackPromptWithAnswer(userAnswer, nextQuestion, standardAnswer);
         return callOpenAI(prompt);
     }
 
@@ -696,6 +761,42 @@ public class ChatService {
         );
 
         return callOpenAI(prompt);
+    }
+
+    /**
+     * 生成包含答案参考的最终评价 - 修正版本，明确传入题目ID
+     */
+    private String generateFinalEvaluationWithAnswer(Long sessionId, String lastAnswer, Long lastQuestionId) {
+        List<Message> messages = messageMapper.findBySessionId(sessionId);
+        StringBuilder conversationHistory = new StringBuilder();
+
+        for (Message msg : messages) {
+            conversationHistory.append(msg.getType() == MessageType.AI ? "面试官：" : "候选人：")
+                    .append(msg.getText()).append("\n\n");
+        }
+
+        conversationHistory.append("候选人：").append(lastAnswer);
+
+        // 获取最后一题的标准答案
+        String lastQuestionAnswer = getStandardAnswerForQuestion(lastQuestionId);
+
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("作为面试官，请对整场面试进行总结评价。\n\n");
+
+        if (lastQuestionAnswer != null && !lastQuestionAnswer.trim().isEmpty()) {
+            prompt.append("最后一题的标准答案参考：\n").append(lastQuestionAnswer).append("\n\n");
+            prompt.append("请在评价时考虑候选人最后一题的回答与标准答案的匹配度。\n\n");
+        }
+
+        prompt.append("面试对话记录：\n").append(conversationHistory.toString()).append("\n\n");
+        prompt.append("请给出：\n");
+        prompt.append("1. 总体表现评价\n");
+        prompt.append("2. 主要优点\n");
+        prompt.append("3. 需要改进的地方\n");
+        prompt.append("4. 具体建议\n\n");
+        prompt.append("请保持专业、客观、鼓励的语气，重点关注候选人的思路和表达能力。");
+
+        return callOpenAI(prompt.toString());
     }
 
     /**

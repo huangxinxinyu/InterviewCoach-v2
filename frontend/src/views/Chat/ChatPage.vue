@@ -424,7 +424,7 @@ const deleteSession = (sessionId: string) => {
 
 const handleStartInterview = async (mode: SessionMode) => {
   try {
-    await chatStore.startNewSession(mode)
+    await chatStore.createSession(mode)
     closeInterviewModeModal()
     await scrollToBottom()
   } catch (error) {

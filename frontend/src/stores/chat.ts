@@ -61,70 +61,92 @@ export const useChatStore = defineStore('chat', () => {
 
     // 创建新会话
     const createSession = async (request: StartInterviewRequest) => {
+        console.group('🚀 创建会话开始')
+        console.log('📋 请求参数:', JSON.stringify(request, null, 2))
+
         loading.value = true
         error.value = null
 
         try {
+            console.log('📡 发送API请求到 /api/chat/sessions')
             const response = await chatAPI.createSession(request)
 
-            console.log('API Response:', response.data)
+            console.log('✅ API响应状态:', response.status)
+            console.log('📦 API响应数据:', JSON.stringify(response.data, null, 2))
 
-            // 从 InterviewSessionResponseDTO 中提取 SessionDTO
+            // 检查响应数据结构
             const responseData = response.data
+            console.log('🔍 响应数据类型:', typeof responseData)
+            console.log('🔍 是否有success字段:', 'success' in responseData)
+            console.log('🔍 是否有session字段:', 'session' in responseData)
+
             let sessionDTO
-
             if (responseData.session) {
-                // 从 InterviewSessionResponseDTO.session 获取 SessionDTO
                 sessionDTO = responseData.session
+                console.log('📄 从 session 字段提取 SessionDTO:', sessionDTO)
             } else {
-                // 如果直接返回 SessionDTO
                 sessionDTO = responseData
+                console.log('📄 直接使用响应数据作为 SessionDTO:', sessionDTO)
             }
 
-            // 转换为前端 Session 格式
+            // 转换过程详细日志
+            console.log('🔄 开始转换 SessionDTO 到 Session')
             const newSession = convertSessionDTOToSession(sessionDTO)
-            console.log('Converted Session:', newSession)
+            console.log('✅ 转换完成的 Session:', JSON.stringify(newSession, null, 2))
 
-            // 确保 sessions.value 是数组
-            if (!Array.isArray(sessions.value)) {
-                sessions.value = []
-            }
-
+            // 状态更新日志
+            console.log('📝 更新前的 sessions 数组长度:', sessions.value.length)
             sessions.value.unshift(newSession)
             currentSession.value = newSession
+            console.log('📝 更新后的 sessions 数组长度:', sessions.value.length)
+            console.log('📝 当前会话ID:', currentSession.value?.id)
 
-            // 获取会话的消息（包括第一条AI消息）
+            // 获取消息的详细过程
+            console.log('📨 开始获取会话消息')
             try {
                 const messagesResponse = await chatAPI.getMessages(newSession.id)
-                console.log('Messages Response:', messagesResponse.data)
+                console.log('📨 消息API响应:', JSON.stringify(messagesResponse.data, null, 2))
 
-                // 正确获取消息数组：从 messagesResponse.data.data 获取
                 let messagesArray
                 if (messagesResponse.data.data) {
-                    // 如果响应格式是 {success: true, data: [...]}
                     messagesArray = messagesResponse.data.data
+                    console.log('📨 从 data.data 获取消息数组')
                 } else if (Array.isArray(messagesResponse.data)) {
-                    // 如果直接返回数组
                     messagesArray = messagesResponse.data
+                    console.log('📨 直接使用响应数据作为消息数组')
                 } else {
                     messagesArray = []
+                    console.log('📨 无法解析消息数据，使用空数组')
                 }
 
                 messages.value = messagesArray
-                console.log('设置的消息列表:', messages.value)
-            } catch (msgError) {
-                console.error('获取消息失败:', msgError)
-                // 即使获取消息失败，也保持空数组，不影响会话创建
+                console.log('📨 设置的消息数量:', messages.value.length)
+
+                if (messages.value.length > 0) {
+                    console.log('📨 第一条消息:', JSON.stringify(messages.value[0], null, 2))
+                }
+
+            } catch (msgError: any) {
+                console.error('❌ 获取消息失败:', msgError)
+                console.error('❌ 错误详情:', msgError.response?.data)
                 messages.value = []
             }
 
+            console.log('✅ 会话创建成功')
             return newSession
+
         } catch (err: any) {
-            console.error('createSession error:', err)
+            console.error('❌ 创建会话失败')
+            console.error('❌ 错误对象:', err)
+            console.error('❌ HTTP状态码:', err.response?.status)
+            console.error('❌ 错误响应数据:', err.response?.data)
+            console.error('❌ 错误消息:', err.message)
+
             error.value = err.response?.data?.message || '创建会话失败'
             throw err
         } finally {
             loading.value = false
+            console.groupEnd()
         }
     }
 
