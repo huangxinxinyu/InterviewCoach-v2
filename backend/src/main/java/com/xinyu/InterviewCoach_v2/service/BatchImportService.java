@@ -4,6 +4,7 @@ import com.xinyu.InterviewCoach_v2.dto.QuestionDTO;
 import com.xinyu.InterviewCoach_v2.dto.TagDTO;
 import com.xinyu.InterviewCoach_v2.dto.request.admin.BatchImportRequestDTO;
 import com.xinyu.InterviewCoach_v2.dto.request.admin.QuestionImportDTO;
+import com.xinyu.InterviewCoach_v2.entity.Answer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,8 +26,11 @@ public class BatchImportService {
     @Autowired
     private QuestionTagService questionTagService;
 
+    @Autowired
+    private AnswerService answerService;
+
     /**
-     * 批量导入题目 - 简化版本
+     * 批量导入题目和答案 - 支持问题答案一体化上传
      */
     @Transactional
     public Map<String, Object> batchImportQuestions(BatchImportRequestDTO request) {
@@ -34,6 +38,7 @@ public class BatchImportService {
         int successCount = 0;
         int skipCount = 0;
         int failCount = 0;
+        int answerCount = 0;
         List<String> errors = new ArrayList<>();
 
         try {
@@ -72,6 +77,28 @@ public class BatchImportService {
                         }
                     }
 
+                    // 处理答案 - 新增逻辑
+                    if (importDTO.getAnswers() != null && !importDTO.getAnswers().isEmpty()) {
+                        for (String answerText : importDTO.getAnswers()) {
+                            try {
+                                if (answerText != null && !answerText.trim().isEmpty()) {
+                                    // 创建答案实体
+                                    Answer answer = new Answer();
+                                    answer.setQuestionId(createdQuestion.getId());
+                                    answer.setText(answerText.trim());
+
+                                    // 保存答案
+                                    answerService.createAnswer(answer);
+                                    answerCount++;
+                                }
+                            } catch (Exception e) {
+                                // 答案处理失败不影响题目创建，记录警告
+                                System.err.println("处理答案失败: " + answerText + ", 错误: " + e.getMessage());
+                                errors.add("题目 " + (i + 1) + " 的答案处理失败: " + e.getMessage());
+                            }
+                        }
+                    }
+
                     successCount++;
 
                 } catch (Exception e) {
@@ -86,13 +113,16 @@ public class BatchImportService {
             result.put("successCount", successCount);
             result.put("skipCount", skipCount);
             result.put("failCount", failCount);
+            result.put("answerCount", answerCount); // 新增：答案导入数量统计
             result.put("errors", errors);
 
             String message;
             if (failCount == 0) {
-                message = String.format("导入完成！成功: %d, 跳过: %d", successCount, skipCount);
+                message = String.format("导入完成！成功: %d题目, %d答案, 跳过: %d",
+                        successCount, answerCount, skipCount);
             } else {
-                message = String.format("部分成功！成功: %d, 跳过: %d, 失败: %d", successCount, skipCount, failCount);
+                message = String.format("部分成功！成功: %d题目, %d答案, 跳过: %d, 失败: %d",
+                        successCount, answerCount, skipCount, failCount);
             }
             result.put("message", message);
 

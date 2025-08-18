@@ -108,6 +108,88 @@ public class AdminController {
         }
     }
 
+    @PostMapping("/questions/batch-import-with-answers")
+    public ResponseEntity<?> batchImportQuestionsWithAnswers(
+            @RequestParam("file") MultipartFile file,
+            HttpServletRequest httpRequest) {
+
+        try {
+            // 验证管理员权限
+            if (!isAdmin(httpRequest)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(new ApiErrorResponseDTO("权限不足，需要管理员权限", "INSUFFICIENT_PERMISSION"));
+            }
+
+            // 验证文件
+            if (file.isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO("文件不能为空", "EMPTY_FILE"));
+            }
+
+            // 验证文件类型
+            String originalFilename = file.getOriginalFilename();
+            if (originalFilename == null || !originalFilename.toLowerCase().endsWith(".json")) {
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO("只支持JSON文件", "INVALID_FILE_TYPE"));
+            }
+
+            // 验证文件大小 (限制10MB)
+            if (file.getSize() > 10 * 1024 * 1024) {
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO("文件大小不能超过10MB", "FILE_TOO_LARGE"));
+            }
+
+            // 解析JSON文件
+            BatchImportRequestDTO request;
+            try {
+                String jsonContent = new String(file.getBytes(), StandardCharsets.UTF_8);
+                ObjectMapper objectMapper = new ObjectMapper();
+                request = objectMapper.readValue(jsonContent, BatchImportRequestDTO.class);
+            } catch (Exception e) {
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO("JSON文件格式错误: " + e.getMessage(), "INVALID_JSON"));
+            }
+
+            // 基本验证
+            if (request.getQuestions() == null || request.getQuestions().isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO("文件中没有题目数据", "NO_QUESTIONS"));
+            }
+
+            if (request.getQuestions().size() > 500) {
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO("单次导入题目数量不能超过500个", "TOO_MANY_QUESTIONS"));
+            }
+
+            // 验证答案数量限制
+            int totalAnswers = request.getQuestions().stream()
+                    .mapToInt(q -> q.getAnswers() != null ? q.getAnswers().size() : 0)
+                    .sum();
+
+            if (totalAnswers > 2000) {
+                return ResponseEntity.badRequest()
+                        .body(new ApiErrorResponseDTO("单次导入答案数量不能超过2000个", "TOO_MANY_ANSWERS"));
+            }
+
+            // 执行批量导入
+            Map<String, Object> result = batchImportService.batchImportQuestions(request);
+
+            if ((Boolean) result.get("success")) {
+                return ResponseEntity.ok(new ApiSuccessResponseDTO<>(
+                        "文件导入完成: " + result.get("message").toString(),
+                        result
+                ));
+            } else {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(new ApiErrorResponseDTO(result.get("message").toString(), "BATCH_IMPORT_FAILED"));
+            }
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiErrorResponseDTO("服务器内部错误: " + e.getMessage(), "INTERNAL_ERROR"));
+        }
+    }
+
     /**
      * 验证是否为管理员
      */

@@ -12,11 +12,20 @@ public class QuestionImportDTO {
 
     private List<String> tags;
 
+    // 新增：答案列表，支持一题多答案
+    private List<String> answers;
+
     public QuestionImportDTO() {}
 
     public QuestionImportDTO(String text, List<String> tags) {
         this.text = text;
         this.tags = tags;
+    }
+
+    public QuestionImportDTO(String text, List<String> tags, List<String> answers) {
+        this.text = text;
+        this.tags = tags;
+        this.answers = answers;
     }
 
     public String getText() {
@@ -33,5 +42,13 @@ public class QuestionImportDTO {
 
     public void setTags(List<String> tags) {
         this.tags = tags;
+    }
+
+    public List<String> getAnswers() {
+        return answers;
+    }
+
+    public void setAnswers(List<String> answers) {
+        this.answers = answers;
     }
 }

@@ -185,6 +185,13 @@ public class SecurityConfig {
                                 "/api/users/role/**"         // 根据角色查询用户
                         ).hasRole("ADMIN")
 
+                        // 管理员专用接口
+                        .requestMatchers(
+                                "/api/admin/questions/batch-import-file",           // 原有的
+                                "/api/admin/questions/batch-import-with-answers",   // 新增的
+                                "/api/admin/**"                                     // 其他管理员接口
+                        ).hasRole("ADMIN")
+
                         // 需要认证的端点
                         .requestMatchers(
                                 "/api/users/**"              // 其他用户相关操作
