@@ -4,6 +4,7 @@ backend/schema.sql
 backend/init.sql
 
 backend/.env
+backend/
 
 frontend/.vscode
 frontend/node_modules
