@@ -45,6 +45,15 @@ public class BatchImportService {
             // 处理每个题目
             for (int i = 0; i < request.getQuestions().size(); i++) {
                 QuestionImportDTO importDTO = request.getQuestions().get(i);
+                System.out.println("=== 处理第" + (i+1) + "个题目 ===");
+                System.out.println("题目文本长度: " + importDTO.getText().length());
+                System.out.println("题目前50字符: " + importDTO.getText().substring(0, Math.min(50, importDTO.getText().length())));
+                if (importDTO.getAnswers() != null) {
+                    System.out.println("答案数量: " + importDTO.getAnswers().size());
+                    for (int j = 0; j < importDTO.getAnswers().size(); j++) {
+                        System.out.println("答案" + (j+1) + "长度: " + importDTO.getAnswers().get(j).length());
+                    }
+                }
 
                 try {
                     // 检查是否重复
@@ -127,6 +136,8 @@ public class BatchImportService {
             result.put("message", message);
 
         } catch (Exception e) {
+            System.err.println("批量导入过程发生异常: " + e.getMessage());
+            e.printStackTrace();
             result.put("success", false);
             result.put("message", "批量导入失败: " + e.getMessage());
             result.put("errors", List.of(e.getMessage()));

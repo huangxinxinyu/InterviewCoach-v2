@@ -88,48 +88,55 @@ public class ChatService {
     @Transactional
     public InterviewSessionResponseDTO startInterview(Long userId, StartInterviewRequestDTO request) {
         try {
-            // 验证请求
+            // 1. 验证请求参数
             if (!request.isValid()) {
                 return InterviewSessionResponseDTO.builder()
                         .success(false)
                         .message("请求参数无效");
             }
 
-            // 为不同模式处理题目数量和题目列表
-            if (request.getMode() == SessionMode.STRUCTURED_SET) {
-                handleStructuredSetMode(request);
-            } else if (request.getMode() == SessionMode.STRUCTURED_TEMPLATE) {
-                handleStructuredTemplateMode(request);
+            // 2. 处理不同模式的预处理逻辑
+            switch (request.getMode()) {
+                case STRUCTURED_SET:
+                    handleStructuredSetMode(request);
+                    break;
+                case STRUCTURED_TEMPLATE:
+                    handleStructuredTemplateMode(request);
+                    break;
+                case SINGLE_TOPIC:
+                    handleSingleTopicMode(request);
+                    break;
             }
 
-            // 创建新会话
+            // 3. 创建新会话
             SessionDTO session = sessionService.createSession(
                     userId,
                     request.getMode(),
                     request.getExpectedQuestionCount()
             );
-            // 为不同模式初始化题目队列
-            if (request.getMode() == SessionMode.STRUCTURED_SET) {
-                initQuestionQueue(session.getId(), request.getQuestionIds());
-            } else if (request.getMode() == SessionMode.STRUCTURED_TEMPLATE) {
-                initTemplateQuestionQueue(session.getId(), request.getTemplateId(), userId);
+
+            // 4. 为所有模式初始化题目队列
+            initQuestionQueueForMode(session.getId(), request, userId);
+
+            // 5. 选择第一个题目并记录
+            Question firstQuestion = peekQuestionFromQueue(session.getId());
+            if (firstQuestion == null) {
+                return InterviewSessionResponseDTO.builder()
+                        .success(false)
+                        .message("没有找到合适的题目");
             }
 
-            // 选择第一个题目并记录
-            Question firstQuestion = selectQuestion(session.getId(), request);
-            if (firstQuestion != null) {
-                // 记录当前题目
-                sessionCurrentQuestions.put(session.getId(), firstQuestion.getId());
+            // 记录当前题目
+            sessionCurrentQuestions.put(session.getId(), firstQuestion.getId());
 
-                // 记录用户开始尝试此题目
-                userAttemptService.recordAttempt(userId, firstQuestion.getId());
-            }
+            // 记录用户开始尝试此题目
+            userAttemptService.recordAttempt(userId, firstQuestion.getId());
 
-            // 发送开场白和第一题
-            String firstQuestionText = generateFirstQuestion(session.getId(), request);
+            // 6. 生成并保存第一题的AI消息
+            String firstQuestionText = generateFirstQuestion(firstQuestion, request.getMode());
             MessageDTO aiMessage = saveAIMessage(session.getId(), firstQuestionText);
 
-            // 更新已提问数量
+            // 7. 更新已提问数量
             sessionService.incrementAskedQuestionCount(session.getId());
 
             return InterviewSessionResponseDTO.builder()
@@ -238,6 +245,92 @@ public class ChatService {
     }
 
     /**
+     * 为不同模式初始化题目队列 - 统一的队列初始化方法
+     */
+    private void initQuestionQueueForMode(Long sessionId, StartInterviewRequestDTO request, Long userId) {
+        switch (request.getMode()) {
+            case STRUCTURED_SET:
+                initQuestionQueue(sessionId, request.getQuestionIds());
+                break;
+            case STRUCTURED_TEMPLATE:
+                initTemplateQuestionQueue(sessionId, request.getTemplateId(), userId);
+                break;
+            case SINGLE_TOPIC:
+                initSingleTopicQuestionQueue(sessionId, request.getTagId(), userId, request.getExpectedQuestionCount());
+                break;
+            default:
+                throw new RuntimeException("不支持的面试模式: " + request.getMode());
+        }
+    }
+
+    /**
+     * 为单主题模式初始化题目队列
+     */
+    private void initSingleTopicQuestionQueue(Long sessionId, Long tagId, Long userId, Integer expectedQuestionCount) {
+        if (tagId == null) {
+            throw new RuntimeException("单主题模式必须提供tagId");
+        }
+
+        if (expectedQuestionCount == null || expectedQuestionCount <= 0) {
+            expectedQuestionCount = 5; // 默认5题
+        }
+
+        try {
+            List<Long> selectedQuestionIds = new ArrayList<>();
+
+            List<Question> untriedQuestions = userAttemptMapper.findUntriedQuestionsByTagId(userId, tagId);
+            for (Question q : untriedQuestions) {
+                selectedQuestionIds.add(q.getId());
+                if (selectedQuestionIds.size() >= expectedQuestionCount) {
+                    break;
+                }
+            }
+
+            if (selectedQuestionIds.size() < expectedQuestionCount) {
+                int remainingCount = expectedQuestionCount - selectedQuestionIds.size();
+                List<Question> leastAttempted = userAttemptMapper.findLeastAttemptedQuestionsByTagId(
+                        userId, tagId, remainingCount * 2); // 获取更多候选以便随机选择
+
+                for (Question q : leastAttempted) {
+                    if (!selectedQuestionIds.contains(q.getId())) {
+                        selectedQuestionIds.add(q.getId());
+                        if (selectedQuestionIds.size() >= expectedQuestionCount) {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (selectedQuestionIds.size() < expectedQuestionCount) {
+                List<Question> allTagQuestions = questionTagMapper.findQuestionsByTagId(tagId);
+                for (Question q : allTagQuestions) {
+                    if (!selectedQuestionIds.contains(q.getId())) {
+                        selectedQuestionIds.add(q.getId());
+                        if (selectedQuestionIds.size() >= expectedQuestionCount) {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (selectedQuestionIds.isEmpty()) {
+                throw new RuntimeException("该标签下没有可用的题目");
+            }
+
+            Collections.shuffle(selectedQuestionIds);
+
+            if (selectedQuestionIds.size() > expectedQuestionCount) {
+                selectedQuestionIds = selectedQuestionIds.subList(0, expectedQuestionCount);
+            }
+
+            sessionQuestionQueues.put(sessionId, new ArrayList<>(selectedQuestionIds));
+
+        } catch (Exception e) {
+            throw new RuntimeException("初始化单主题题目队列失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 为 structured_set 模式初始化题目队列
      */
     private void initQuestionQueue(Long sessionId, List<Long> questionIds) {
@@ -328,12 +421,6 @@ public class ChatService {
         // 增加已完成题目数量
         sessionService.incrementCompletedQuestionCount(sessionId);
 
-        // 对于STRUCTURED_SET和STRUCTURED_TEMPLATE模式，移除刚回答的题目
-        if (session.getMode() == SessionMode.STRUCTURED_SET ||
-                session.getMode() == SessionMode.STRUCTURED_TEMPLATE) {
-            removeCurrentQuestionFromQueue(sessionId);
-        }
-
         // 重新获取更新后的session
         session = sessionMapper.findById(sessionId).get();
 
@@ -358,7 +445,7 @@ public class ChatService {
                     .chatInputEnabled(false);
         } else {
             // 选择下一题
-            Question nextQuestion = getNextQuestion(sessionId);
+            Question nextQuestion = peekQuestionFromQueue(sessionId);
             if (nextQuestion != null) {
                 // 记录当前题目
                 sessionCurrentQuestions.put(sessionId, nextQuestion.getId());
@@ -385,39 +472,27 @@ public class ChatService {
     /**
      * 生成第一个问题
      */
-    private String generateFirstQuestion(Long sessionId, StartInterviewRequestDTO request) {
-        Question selectedQuestion = selectQuestion(sessionId, request);
+    private String generateFirstQuestion(Question question, SessionMode mode) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("你是一个专业的面试官，正在进行技术面试。");
 
-        if (selectedQuestion == null) {
-            return "很抱歉，暂时没有合适的题目。请稍后再试。";
-        }
-
-        String prompt = buildFirstQuestionPrompt(request.getMode(), selectedQuestion);
-        return callOpenAI(prompt);
-    }
-
-    /**
-     * 选择题目的策略 - 修改版本支持模板
-     */
-    private Question selectQuestion(Long sessionId, StartInterviewRequestDTO request) {
-        Optional<Session> sessionOpt = sessionMapper.findById(sessionId);
-        if (sessionOpt.isEmpty()) {
-            return null;
-        }
-
-        Session session = sessionOpt.get();
-        Long userId = session.getUserId();
-
-        switch (request.getMode()) {
+        switch (mode) {
             case SINGLE_TOPIC:
-                return selectQuestionByTag(userId, request.getTagId());
+                prompt.append("本次面试将围绕特定主题进行。");
+                break;
             case STRUCTURED_SET:
-                return peekQuestionFromQueue(sessionId);
+                prompt.append("本次面试将按照预设的题目顺序进行。");
+                break;
             case STRUCTURED_TEMPLATE:
-                return peekQuestionFromQueue(sessionId); // 模板模式也使用队列
-            default:
-                return selectQuestionByTemplate(userId);
+                prompt.append("本次面试将根据结构化模板进行。");
+                break;
         }
+
+        prompt.append("请根据以下题目向候选人提问：\n\n");
+        prompt.append("题目：").append(question.getText()).append("\n\n");
+        prompt.append("请以自然、友好的语气提出这个问题，并可以适当补充一些背景信息。");
+
+        return callOpenAI(prompt.toString());
     }
 
     /**
@@ -465,23 +540,6 @@ public class ChatService {
         return questionMapper.findById(questionId).orElse(null);
     }
 
-    /**
-     * 从题目队列中选择题目（structured_set模式）
-     */
-    private Question selectQuestionFromQueue(Long sessionId) {
-        System.out.println("------------------");
-        System.out.println(sessionQuestionQueues.get(sessionId));
-        List<Long> queue = sessionQuestionQueues.get(sessionId);
-        if (queue == null || queue.isEmpty()) {
-            return null;
-        }
-
-        Long questionId = queue.get(0);
-        System.out.println("------------------");
-        System.out.println(questionId);
-        return questionMapper.findById(questionId).orElse(null);
-    }
-
     private void removeCurrentQuestionFromQueue(Long sessionId) {
         List<Long> queue = sessionQuestionQueues.get(sessionId);
         if (queue != null && !queue.isEmpty()) {
@@ -490,58 +548,11 @@ public class ChatService {
     }
 
     /**
-     * 根据标签选择题目
-     */
-    private Question selectQuestionByTag(Long userId, Long tagId) {
-        if (tagId == null) {
-            return null;
-        }
-
-        List<Question> untriedQuestions = userAttemptMapper.findUntriedQuestionsByTagId(userId, tagId);
-        if (!untriedQuestions.isEmpty()) {
-            return untriedQuestions.get(0);
-        }
-
-        List<Question> leastAttempted = userAttemptMapper.findLeastAttemptedQuestionsByTagId(userId, tagId, 5);
-        if (!leastAttempted.isEmpty()) {
-            return leastAttempted.get(new Random().nextInt(leastAttempted.size()));
-        }
-
-        return null;
-    }
-
-    /**
      * 根据模板选择题目
      */
     private Question selectQuestionByTemplate(Long userId) {
         List<Question> allQuestions = questionMapper.findRandom(10);
         return allQuestions.isEmpty() ? null : allQuestions.get(0);
-    }
-
-    /**
-     * 构建第一题的提示词
-     */
-    private String buildFirstQuestionPrompt(SessionMode mode, Question question) {
-        StringBuilder prompt = new StringBuilder();
-        prompt.append("你是一个专业的面试官，正在进行技术面试。");
-
-        switch (mode) {
-            case SINGLE_TOPIC:
-                prompt.append("本次面试将围绕特定主题进行。");
-                break;
-            case STRUCTURED_SET:
-                prompt.append("本次面试将按照预设的题目顺序进行。");
-                break;
-            case STRUCTURED_TEMPLATE:
-                prompt.append("本次面试将根据结构化模板进行。");
-                break;
-        }
-
-        prompt.append("请根据以下题目向候选人提问：\n\n");
-        prompt.append("题目：").append(question.getText()).append("\n\n");
-        prompt.append("请以自然、友好的语气提出这个问题，并可以适当补充一些背景信息。");
-
-        return prompt.toString();
     }
 
     /**
@@ -652,15 +663,35 @@ public class ChatService {
 
         Session session = sessionOpt.get();
 
+        // 移除当前题目
+        removeCurrentQuestionFromQueue(sessionId);
+
+        // 根据模式获取下一题
         switch (session.getMode()) {
             case SINGLE_TOPIC:
-                return getNextQuestionByTag(session);
             case STRUCTURED_SET:
-                return getNextQuestionFromQueue(sessionId);
             case STRUCTURED_TEMPLATE:
-                return getNextQuestionFromQueue(sessionId); // 模板模式也使用队列
+                return peekQuestionFromQueue(sessionId);
             default:
-                return getNextQuestionByTemplate(session);
+                return selectQuestionByTemplate(session.getUserId());
+        }
+    }
+
+    /**
+     * 处理单主题模式的预处理逻辑
+     */
+    private void handleSingleTopicMode(StartInterviewRequestDTO request) {
+        if (request.getTagId() == null) {
+            throw new RuntimeException("单主题模式必须提供tagId");
+        }
+
+        if (request.getExpectedQuestionCount() == null || request.getExpectedQuestionCount() <= 0) {
+            request.setExpectedQuestionCount(5); // 默认5题
+        }
+
+        // 验证题目数量不能超过限制
+        if (request.getExpectedQuestionCount() > 20) {
+            throw new RuntimeException("题目数量不能超过20个");
         }
     }
 
@@ -711,56 +742,6 @@ public class ChatService {
         if (request.getExpectedQuestionCount() > 20) {
             throw new RuntimeException("模板题目数量不能超过20个");
         }
-    }
-
-    /**
-     * 从队列获取下一题（structured_set模式）
-     */
-    private Question getNextQuestionFromQueue(Long sessionId) {
-        return selectQuestionFromQueue(sessionId);
-    }
-
-    /**
-     * 根据标签获取下一题
-     */
-    private Question getNextQuestionByTag(Session session) {
-        return selectQuestionByTag(session.getUserId(), 1L); // 假设tagId为1
-    }
-
-    /**
-     * 根据模板获取下一题
-     */
-    private Question getNextQuestionByTemplate(Session session) {
-        return selectQuestionByTemplate(session.getUserId());
-    }
-
-    /**
-     * 生成最终评价
-     */
-    private String generateFinalEvaluation(Long sessionId, String lastAnswer) {
-        List<Message> messages = messageMapper.findBySessionId(sessionId);
-        StringBuilder conversationHistory = new StringBuilder();
-
-        for (Message msg : messages) {
-            conversationHistory.append(msg.getType() == MessageType.AI ? "面试官：" : "候选人：")
-                    .append(msg.getText()).append("\n\n");
-        }
-
-        conversationHistory.append("候选人：").append(lastAnswer);
-
-        String prompt = String.format(
-                "作为面试官，请对整场面试进行总结评价。\n\n" +
-                        "面试对话记录：\n%s\n\n" +
-                        "请给出：\n" +
-                        "1. 总体表现评价\n" +
-                        "2. 主要优点\n" +
-                        "3. 需要改进的地方\n" +
-                        "4. 建议\n\n" +
-                        "请保持专业、客观、鼓励的语气。",
-                conversationHistory.toString()
-        );
-
-        return callOpenAI(prompt);
     }
 
     /**
