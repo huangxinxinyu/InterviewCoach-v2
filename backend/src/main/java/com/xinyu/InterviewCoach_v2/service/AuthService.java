@@ -2,6 +2,7 @@ package com.xinyu.InterviewCoach_v2.service;
 
 import com.xinyu.InterviewCoach_v2.dto.UserDTO;
 import com.xinyu.InterviewCoach_v2.dto.response.auth.LoginResponseDTO;
+import com.xinyu.InterviewCoach_v2.dto.response.auth.RegisterResponseDTO;
 import com.xinyu.InterviewCoach_v2.dto.response.auth.TokenValidationResponseDTO;
 import com.xinyu.InterviewCoach_v2.entity.User;
 import com.xinyu.InterviewCoach_v2.util.DTOConverter;
@@ -12,7 +13,7 @@ import org.springframework.stereotype.Service;
 import java.util.Optional;
 
 /**
- * 认证服务 - 完全使用新的DTO结构
+ * 认证服务 - 重构支持邮箱验证码注册
  */
 @Service
 public class AuthService {
@@ -21,10 +22,80 @@ public class AuthService {
     private UserService userService;
 
     @Autowired
+    private EmailVerificationService emailVerificationService;
+
+    @Autowired
     private DTOConverter dtoConverter;
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    /**
+     * 发送注册验证码
+     * @param email 用户邮箱
+     * @return 是否成功发送
+     */
+    public boolean sendRegisterVerificationCode(String email) {
+        try {
+            // 检查邮箱是否已存在
+            if (userService.emailExists(email)) {
+                throw new RuntimeException("邮箱已被注册");
+            }
+
+            // 发送验证码
+            emailVerificationService.sendVerificationCode(email);
+            return true;
+        } catch (Exception e) {
+            throw new RuntimeException("发送验证码失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 验证邮箱验证码并完成注册
+     * @param email 邮箱地址
+     * @param code 验证码
+     * @param password 密码
+     * @return 注册响应
+     */
+    public RegisterResponseDTO registerWithEmailVerification(String email, String code, String password) {
+        try {
+            // 验证验证码
+            if (!emailVerificationService.verifyCode(email, code)) {
+                return RegisterResponseDTO.builder()
+                        .success(false)
+                        .message("验证码错误或已过期");
+            }
+
+            // 再次检查邮箱是否已存在
+            if (userService.emailExists(email)) {
+                return RegisterResponseDTO.builder()
+                        .success(false)
+                        .message("邮箱已被注册");
+            }
+
+            // 创建用户
+            UserDTO userDTO = new UserDTO(email, password);
+            UserDTO createdUser = userService.createUser(userDTO);
+
+            // 自动登录
+            String token = jwtUtil.generateToken(
+                    createdUser.getEmail(),
+                    createdUser.getRole().name(),
+                    createdUser.getId()
+            );
+
+            return RegisterResponseDTO.builder()
+                    .success(true)
+                    .message("注册成功")
+                    .token(token)
+                    .user(createdUser.clearSensitiveInfo());
+
+        } catch (Exception e) {
+            return RegisterResponseDTO.builder()
+                    .success(false)
+                    .message("注册失败: " + e.getMessage());
+        }
+    }
 
     /**
      * 用户登录 - 使用新的响应DTO
@@ -93,35 +164,30 @@ public class AuthService {
 
         return new LoginResult(
                 newResponse.isSuccess(),
-                newResponse.getMessage(),
                 newResponse.getToken(),
-                newResponse.getUser()
+                newResponse.getUser(),
+                newResponse.getMessage()
         );
     }
 
     /**
-     * 登录结果内部类 - 保持向后兼容
+     * 兼容性内部类 - LoginResult
      */
     public static class LoginResult {
         private boolean success;
-        private String message;
         private String token;
         private UserDTO user;
+        private String message;
 
-        public LoginResult(boolean success, String message, String token, UserDTO user) {
+        public LoginResult(boolean success, String token, UserDTO user, String message) {
             this.success = success;
-            this.message = message;
             this.token = token;
             this.user = user;
+            this.message = message;
         }
 
-        // Getters
         public boolean isSuccess() {
             return success;
-        }
-
-        public String getMessage() {
-            return message;
         }
 
         public String getToken() {
@@ -132,21 +198,8 @@ public class AuthService {
             return user;
         }
 
-        // Setters
-        public void setSuccess(boolean success) {
-            this.success = success;
-        }
-
-        public void setMessage(String message) {
-            this.message = message;
-        }
-
-        public void setToken(String token) {
-            this.token = token;
-        }
-
-        public void setUser(UserDTO user) {
-            this.user = user;
+        public String getMessage() {
+            return message;
         }
     }
 }

@@ -59,7 +59,7 @@ public class SecurityConfig {
                                 "/api/users/login",           // 登录接口
                                 "/api/users/register",        // 注册接口
                                 "/api/users/check-email/**",  // 检查邮箱是否存在
-                                "/api/email/send-code",       // 验证真实邮箱
+                                "/api/users/send-register-code",       // 验证真实邮箱
                                 "/api/users/validate-token",  // Token验证
                                 "/error"                      // 错误页面
                         ).permitAll()
