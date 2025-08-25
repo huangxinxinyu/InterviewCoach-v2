@@ -3,6 +3,7 @@ package com.xinyu.InterviewCoach_v2.service.cache;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xinyu.InterviewCoach_v2.dto.core.SessionDTO;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,8 +41,16 @@ public class RedisSessionManager {
     @Autowired(required = false)
     private MeterRegistry meterRegistry;
 
-//    Counter cacheHit = Counter.builder("session.cache.hit").register(meterRegistry);
-//    Counter cacheMiss = Counter.builder("session.cache.miss").register(meterRegistry);
+    private Counter cacheHit;
+    private Counter cacheMiss;
+
+    @PostConstruct
+    private void initMetrics() {
+        if (meterRegistry != null) {
+            cacheHit = Counter.builder("session.cache.hit").register(meterRegistry);
+            cacheMiss = Counter.builder("session.cache.miss").register(meterRegistry);
+        }
+    }
 
     /**
      * 缓存会话数据
