@@ -67,6 +67,9 @@ openai:
     key: ${OPENAI_API_KEY}
     url: ${OPENAI_API_URL:https://api.openai.com/v1/chat/completions}
   model: ${OPENAI_MODEL:gpt-3.5-turbo}
+  embedding:
+    url: ${OPENAI_EMBEDDING_URL:https://api.openai.com/v1/embeddings}
+    model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
 
 # 面试配置
 interview:
@@ -87,6 +90,18 @@ cache:
   message:
     ttl: 3600  # 消息缓存1小时
     prefix: "message:"
+  # 新增AI响应缓存配置
+  ai:
+    enabled: true  # 是否启用AI响应缓存
+    prefix: "ai:"
+    first-question:
+      ttl: 604800  # 第一题缓存7天
+    feedback:
+      ttl: 259200  # 反馈缓存3天
+    similarity-threshold: 0.85  # 中文语义相似度阈值
+    embedding:
+      enabled: true  # 是否启用embedding语义匹配
+    max-similar-answers: 10  # 最多检查多少个相似答案
 
 # 调试配置（可选）
 #debug: true

@@ -15,7 +15,10 @@ import com.xinyu.InterviewCoach_v2.enums.InterviewState;
 import com.xinyu.InterviewCoach_v2.enums.MessageType;
 import com.xinyu.InterviewCoach_v2.enums.SessionMode;
 import com.xinyu.InterviewCoach_v2.mapper.*;
+import com.xinyu.InterviewCoach_v2.service.cache.AIResponseCacheManager;
 import com.xinyu.InterviewCoach_v2.util.DTOConverter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
@@ -74,6 +77,9 @@ public class ChatService {
     @Value("${openai.model:gpt-3.5-turbo}")
     private String openAiModel;
 
+    @Autowired
+    private AIResponseCacheManager aiCacheManager;
+
     private final RestTemplate restTemplate = new RestTemplate();
 
     // 为 structured_set 模式存储题目队列
@@ -81,6 +87,8 @@ public class ChatService {
 
     // 添加当前题目跟踪 - 记录每个会话当前正在问的题目ID
     private final Map<Long, Long> sessionCurrentQuestions = new HashMap<>();
+
+    private static final Logger logger = LoggerFactory.getLogger(ChatService.class);
 
     /**
      * 启动新的面试会话
@@ -473,6 +481,14 @@ public class ChatService {
      * 生成第一个问题
      */
     private String generateFirstQuestion(Question question, SessionMode mode) {
+        // 1. 先尝试从缓存获取
+        Optional<String> cached = aiCacheManager.getCachedFirstQuestion(question.getId(), mode);
+        if (cached.isPresent()) {
+            logger.debug("使用缓存的第一题问法: questionId={}, mode={}", question.getId(), mode);
+            return cached.get();
+        }
+
+        // 2. 缓存未命中，调用AI生成
         StringBuilder prompt = new StringBuilder();
         prompt.append("你是一个专业的面试官，正在进行技术面试。");
 
@@ -492,7 +508,15 @@ public class ChatService {
         prompt.append("题目：").append(question.getText()).append("\n\n");
         prompt.append("请以自然、友好的语气提出这个问题，并可以适当补充一些背景信息。");
 
-        return callOpenAI(prompt.toString());
+        String aiResponse = callOpenAI(prompt.toString());
+
+        // 3. 缓存AI回复
+        if (aiResponse != null && !aiResponse.contains("暂时无法") && !aiResponse.contains("不可用")) {
+            aiCacheManager.cacheFirstQuestion(question.getId(), mode, aiResponse);
+            logger.debug("缓存第一题问法: questionId={}, mode={}", question.getId(), mode);
+        }
+
+        return aiResponse;
     }
 
     /**
@@ -595,12 +619,34 @@ public class ChatService {
         Question nextQuestion = getNextQuestion(sessionId);
 
         if (nextQuestion == null) {
-            System.out.println("-------------no more questions left");
+//            System.out.println("-------------no more questions left");
             return generateFinalEvaluationWithAnswer(sessionId, userAnswer, previousQuestionId);
         }
 
+        // 1. 尝试从缓存获取反馈
+        boolean hasStandardAnswer = (standardAnswer != null && !standardAnswer.trim().isEmpty());
+        Optional<String> cached = aiCacheManager.getCachedFeedback(
+                previousQuestionId, nextQuestion.getId(), userAnswer, hasStandardAnswer);
+
+        if (cached.isPresent()) {
+            logger.debug("使用缓存的反馈: prevQ={}, nextQ={}, answerLength={}",
+                    previousQuestionId, nextQuestion.getId(), userAnswer.length());
+            return cached.get();
+        }
+
+        // 2. 缓存未命中，生成新的反馈
         String prompt = buildFeedbackPromptWithAnswer(userAnswer, nextQuestion, standardAnswer);
-        return callOpenAI(prompt);
+        String aiResponse = callOpenAI(prompt);
+
+        // 3. 缓存AI回复
+        if (aiResponse != null && !aiResponse.contains("暂时无法") && !aiResponse.contains("不可用")) {
+            aiCacheManager.cacheFeedback(previousQuestionId, nextQuestion.getId(),
+                    userAnswer, hasStandardAnswer, aiResponse);
+            logger.debug("缓存反馈回复: prevQ={}, nextQ={}, answerLength={}",
+                    previousQuestionId, nextQuestion.getId(), userAnswer.length());
+        }
+
+        return aiResponse;
     }
 
     /**
