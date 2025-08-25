@@ -37,6 +37,17 @@ spring:
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
       database: 0
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 200
+          max-wait: -1ms
+          max-idle: 10
+          min-idle: 0
+      # 序列化配置
+      serialization:
+        key-serializer: string
+        value-serializer: json
 
 # MyBatis配置
 mybatis:
@@ -67,6 +78,15 @@ interview:
 email:
   verification:
     expiration-minutes: 5
+
+# 缓存配置
+cache:
+  session:
+    ttl: 1800  # 30分钟过期时间（秒）
+    prefix: "session:"
+  message:
+    ttl: 3600  # 消息缓存1小时
+    prefix: "message:"
 
 # 调试配置（可选）
 #debug: true

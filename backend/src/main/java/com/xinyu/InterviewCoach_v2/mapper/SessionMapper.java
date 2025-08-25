@@ -137,4 +137,24 @@ public interface SessionMapper {
      */
     @Select("SELECT COUNT(*) > 0 FROM session WHERE user_id = #{userId} AND is_active = true")
     boolean hasActiveSession(Long userId);
+
+    /**
+     * 查询最近活跃的会话（用于缓存预热）
+     */
+    @Select("SELECT id, user_id, mode, expected_question_count, asked_question_count, " +
+            "completed_question_count, started_at, ended_at, is_active " +
+            "FROM session WHERE started_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR) " +
+            "ORDER BY started_at DESC LIMIT 1000")
+    @Results({
+            @Result(property = "id", column = "id"),
+            @Result(property = "userId", column = "user_id"),
+            @Result(property = "mode", column = "mode", javaType = SessionMode.class),
+            @Result(property = "expectedQuestionCount", column = "expected_question_count"),
+            @Result(property = "askedQuestionCount", column = "asked_question_count"),
+            @Result(property = "completedQuestionCount", column = "completed_question_count"),
+            @Result(property = "startedAt", column = "started_at"),
+            @Result(property = "endedAt", column = "ended_at"),
+            @Result(property = "isActive", column = "is_active")
+    })
+    List<Session> findRecentActiveSessions();
 }
