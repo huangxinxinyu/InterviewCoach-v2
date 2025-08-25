@@ -2,6 +2,7 @@ import axios from 'axios'
 import type {
     AuthResponse,
     LoginRequest,
+    SendVerificationCodeRequest,
     RegisterRequest,
     User,
     Session,
@@ -60,6 +61,9 @@ export const authAPI = {
 
     register: (data: RegisterRequest): Promise<ApiResponseType<AuthResponse>> =>
         api.post('/users/register', data),
+
+    sendRegisterCode: (data: SendVerificationCodeRequest): Promise<ApiResponseType<{ message: string }>> =>
+        api.post('/users/send-register-code', data),
 
     getCurrentUser: (): Promise<ApiResponseType<User>> =>
         api.get('/users/me'),

@@ -25,6 +25,7 @@
       <!-- Register Form -->
       <form class="mt-8 space-y-6" @submit.prevent="handleRegister">
         <div class="space-y-4">
+          <!-- Email -->
           <BaseInput
               v-model="form.email"
               type="email"
@@ -32,32 +33,96 @@
               placeholder="请输入邮箱地址"
               required
               :error-message="errors.email"
+              :disabled="codeSent"
               @blur="validateEmail"
           />
 
-          <BaseInput
-              v-model="form.password"
-              type="password"
-              label="密码"
-              placeholder="请输入密码（至少6位）"
-              required
-              :error-message="errors.password"
-              @blur="validatePassword"
-          />
+          <!-- Verification Code -->
+          <div v-if="!codeSent">
+            <BaseButton
+                type="button"
+                variant="secondary"
+                size="md"
+                :disabled="!isEmailValid || authStore.loading"
+                :loading="authStore.loading"
+                class="w-full"
+                @click="handleSendCode"
+            >
+              发送验证码
+            </BaseButton>
+          </div>
 
-          <BaseInput
-              v-model="form.confirmPassword"
-              type="password"
-              label="确认密码"
-              placeholder="请再次输入密码"
-              required
-              :error-message="errors.confirmPassword"
-              @blur="validateConfirmPassword"
-          />
+          <div v-else class="space-y-4">
+            <!-- Success Message -->
+            <div class="rounded-md bg-green-50 p-4">
+              <div class="flex">
+                <div class="flex-shrink-0">
+                  <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                  </svg>
+                </div>
+                <div class="ml-3">
+                  <p class="text-sm font-medium text-green-800">
+                    验证码已发送到您的邮箱，请查收
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Code Input -->
+            <BaseInput
+                v-model="form.code"
+                type="text"
+                label="验证码"
+                placeholder="请输入6位验证码"
+                required
+                maxlength="6"
+                :error-message="errors.code"
+                @blur="validateCode"
+            />
+
+            <!-- Resend Code -->
+            <div class="flex items-center justify-between">
+              <span class="text-sm text-primary-600">
+                {{ countdownText }}
+              </span>
+              <BaseButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  :disabled="countdown > 0 || authStore.loading"
+                  @click="handleResendCode"
+              >
+                重新发送
+              </BaseButton>
+            </div>
+
+            <!-- Password -->
+            <BaseInput
+                v-model="form.password"
+                type="password"
+                label="密码"
+                placeholder="请输入密码（至少6位）"
+                required
+                :error-message="errors.password"
+                @blur="validatePassword"
+            />
+
+            <!-- Confirm Password -->
+            <BaseInput
+                v-model="form.confirmPassword"
+                type="password"
+                label="确认密码"
+                placeholder="请再次输入密码"
+                required
+                :error-message="errors.confirmPassword"
+                @blur="validateConfirmPassword"
+            />
+          </div>
         </div>
 
         <!-- Terms and Privacy -->
-        <div class="flex items-center">
+        <div v-if="codeSent" class="flex items-center">
           <input
               id="agree-terms"
               v-model="form.agreeToTerms"
@@ -73,7 +138,7 @@
         </div>
 
         <!-- Register Button -->
-        <div>
+        <div v-if="codeSent">
           <BaseButton
               type="submit"
               variant="primary"
@@ -103,7 +168,7 @@
         </div>
 
         <!-- Social Register -->
-        <div class="mt-6">
+        <div v-if="codeSent" class="mt-6">
           <div class="relative">
             <div class="absolute inset-0 flex items-center">
               <div class="w-full border-t border-primary-300" />
@@ -141,100 +206,125 @@
           </div>
         </div>
       </form>
-
-      <!-- Back to Home -->
-      <div class="text-center">
-        <router-link
-            to="/"
-            class="text-sm text-primary-600 hover:text-primary-900 transition-colors"
-        >
-          ← 返回首页
-        </router-link>
-      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
-import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
+import BaseInput from '@/components/ui/BaseInput.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const uiStore = useUIStore()
 
-const form = reactive({
+// 表单状态
+const form = ref({
   email: '',
+  code: '',
   password: '',
   confirmPassword: '',
   agreeToTerms: false
 })
 
-const errors = reactive({
+// 错误状态
+const errors = ref({
   email: '',
+  code: '',
   password: '',
   confirmPassword: ''
 })
 
-const isFormValid = computed(() => {
-  return form.email &&
-      form.password &&
-      form.confirmPassword &&
-      form.agreeToTerms &&
-      !errors.email &&
-      !errors.password &&
-      !errors.confirmPassword
+// 验证码发送状态
+const codeSent = ref(false)
+const countdown = ref(0)
+let countdownTimer: number | null = null
+
+// 计算属性
+const isEmailValid = computed(() => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return form.value.email && emailRegex.test(form.value.email)
 })
 
+const isFormValid = computed(() => {
+  return codeSent.value &&
+      isEmailValid.value &&
+      form.value.code.length === 6 &&
+      form.value.password &&
+      form.value.confirmPassword &&
+      form.value.password === form.value.confirmPassword &&
+      form.value.agreeToTerms
+})
+
+const countdownText = computed(() => {
+  return countdown.value > 0 ? `${countdown.value}秒后可重发` : ''
+})
+
+// 验证方法
 const validateEmail = () => {
-  if (!form.email) {
-    errors.email = '请输入邮箱地址'
+  if (!form.value.email) {
+    errors.value.email = '请输入邮箱地址'
     return false
   }
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  if (!emailRegex.test(form.email)) {
-    errors.email = '请输入有效的邮箱地址'
+  if (!emailRegex.test(form.value.email)) {
+    errors.value.email = '请输入有效的邮箱地址'
     return false
   }
 
-  errors.email = ''
+  errors.value.email = ''
+  return true
+}
+
+const validateCode = () => {
+  if (!form.value.code) {
+    errors.value.code = '请输入验证码'
+    return false
+  }
+
+  if (form.value.code.length !== 6) {
+    errors.value.code = '验证码必须是6位'
+    return false
+  }
+
+  errors.value.code = ''
   return true
 }
 
 const validatePassword = () => {
-  if (!form.password) {
-    errors.password = '请输入密码'
+  if (!form.value.password) {
+    errors.value.password = '请输入密码'
     return false
   }
 
-  if (form.password.length < 6) {
-    errors.password = '密码长度至少6位'
+  if (form.value.password.length < 6) {
+    errors.value.password = '密码长度至少6位'
     return false
   }
 
-  if (form.password.length > 128) {
-    errors.password = '密码长度不能超过128位'
+  if (form.value.password.length > 128) {
+    errors.value.password = '密码长度不能超过128位'
     return false
   }
 
   // 检查密码强度 - 至少包含字母和数字
-  const hasLetter = /[a-zA-Z]/.test(form.password)
-  const hasNumber = /\d/.test(form.password)
+  const hasLetter = /[a-zA-Z]/.test(form.value.password)
+  const hasNumber = /\d/.test(form.value.password)
 
   if (!hasLetter || !hasNumber) {
-    errors.password = '密码需要包含字母和数字'
+    errors.value.password = '密码需要包含字母和数字'
     return false
   }
 
-  errors.password = ''
+  errors.value.password = ''
 
   // 如果确认密码已填写，需要重新验证
-  if (form.confirmPassword) {
+  if (form.value.confirmPassword) {
     validateConfirmPassword()
   }
 
@@ -242,42 +332,84 @@ const validatePassword = () => {
 }
 
 const validateConfirmPassword = () => {
-  if (!form.confirmPassword) {
-    errors.confirmPassword = '请确认密码'
+  if (!form.value.confirmPassword) {
+    errors.value.confirmPassword = '请确认密码'
     return false
   }
 
-  if (form.password !== form.confirmPassword) {
-    errors.confirmPassword = '两次输入的密码不一致'
+  if (form.value.password !== form.value.confirmPassword) {
+    errors.value.confirmPassword = '两次输入的密码不一致'
     return false
   }
 
-  errors.confirmPassword = ''
+  errors.value.confirmPassword = ''
   return true
 }
 
+// 倒计时
+const startCountdown = () => {
+  countdown.value = 60
+  countdownTimer = window.setInterval(() => {
+    countdown.value--
+    if (countdown.value <= 0) {
+      clearInterval(countdownTimer!)
+      countdownTimer = null
+    }
+  }, 1000)
+}
+
+// 发送验证码
+const handleSendCode = async () => {
+  if (!validateEmail()) {
+    return
+  }
+
+  authStore.clearError()
+  const success = await authStore.sendRegisterCode({ email: form.value.email })
+
+  if (success) {
+    codeSent.value = true
+    startCountdown()
+    uiStore.addNotification('success', '验证码发送成功，请查收邮件')
+  }
+}
+
+// 重新发送验证码
+const handleResendCode = async () => {
+  authStore.clearError()
+  const success = await authStore.sendRegisterCode({ email: form.value.email })
+
+  if (success) {
+    startCountdown()
+    uiStore.addNotification('success', '验证码重新发送成功')
+  }
+}
+
+// 注册
 const handleRegister = async () => {
   // 清除之前的错误
   authStore.clearError()
 
   // 验证表单
-  const isEmailValid = validateEmail()
+  const isCodeValid = validateCode()
   const isPasswordValid = validatePassword()
   const isConfirmPasswordValid = validateConfirmPassword()
 
-  if (!isEmailValid || !isPasswordValid || !isConfirmPasswordValid) {
+  if (!isCodeValid || !isPasswordValid || !isConfirmPasswordValid) {
     return
   }
 
-  if (!form.agreeToTerms) {
+  if (!form.value.agreeToTerms) {
     uiStore.addNotification('warning', '请同意服务条款和隐私政策')
     return
   }
 
-  // 尝试注册 - 只发送邮箱和密码
+  // 尝试注册
   const success = await authStore.register({
-    email: form.email,
-    password: form.password
+    email: form.value.email,
+    code: form.value.code,
+    password: form.value.password,
+    confirmPassword: form.value.confirmPassword
   })
 
   if (success) {
@@ -293,5 +425,12 @@ const handleSocialRegister = (provider: string) => {
 onMounted(() => {
   // 清除任何错误状态
   authStore.clearError()
+})
+
+onUnmounted(() => {
+  // 清理倒计时定时器
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+  }
 })
 </script>

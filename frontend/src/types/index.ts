@@ -17,8 +17,13 @@ export interface LoginRequest {
 
 export interface RegisterRequest {
     email: string
-    username: string
+    code: string
     password: string
+    confirmPassword: string
+}
+
+export interface SendVerificationCodeRequest {
+    email: string
 }
 
 // 会话相关类型

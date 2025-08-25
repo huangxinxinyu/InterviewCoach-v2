@@ -1,7 +1,9 @@
+// frontend/src/stores/auth.ts
+
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authAPI } from '@/services/api'
-import type { User, LoginRequest, RegisterRequest } from '@/types'
+import type { User, LoginRequest, RegisterRequest, SendVerificationCodeRequest } from '@/types'
 
 export const useAuthStore = defineStore('auth', () => {
     // 状态
@@ -67,6 +69,22 @@ export const useAuthStore = defineStore('auth', () => {
         }
     }
 
+    // 发送注册验证码
+    const sendRegisterCode = async (data: SendVerificationCodeRequest) => {
+        loading.value = true
+        error.value = null
+
+        try {
+            await authAPI.sendRegisterCode(data)
+            return true
+        } catch (err: any) {
+            error.value = err.response?.data?.message || '发送验证码失败'
+            return false
+        } finally {
+            loading.value = false
+        }
+    }
+
     // 注册
     const register = async (userData: RegisterRequest) => {
         loading.value = true
@@ -121,6 +139,7 @@ export const useAuthStore = defineStore('auth', () => {
         initAuth,
         getCurrentUser,
         login,
+        sendRegisterCode,
         register,
         logout,
         clearError,
