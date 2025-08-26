@@ -16,6 +16,9 @@ public class SessionDTO {
     private Integer expectedQuestionCount;
     private Integer askedQuestionCount;
     private Integer completedQuestionCount;
+    private String questionQueue;
+    private Long currentQuestionId;
+    private Integer queuePosition;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime startedAt;
@@ -26,7 +29,9 @@ public class SessionDTO {
     private Boolean isActive;
     private InterviewState currentState;
 
-    public SessionDTO() {}
+    public SessionDTO() {
+        this.queuePosition = 0;
+    }
 
     public SessionDTO(Long id, Long userId, SessionMode mode, Integer expectedQuestionCount,
                       Integer askedQuestionCount, Integer completedQuestionCount,
@@ -72,4 +77,48 @@ public class SessionDTO {
 
     public InterviewState getCurrentState() { return currentState; }
     public void setCurrentState(InterviewState currentState) { this.currentState = currentState; }
+
+    public String getQuestionQueue() {
+        return questionQueue;
+    }
+
+    public void setQuestionQueue(String questionQueue) {
+        this.questionQueue = questionQueue;
+    }
+
+    public Long getCurrentQuestionId() {
+        return currentQuestionId;
+    }
+
+    public void setCurrentQuestionId(Long currentQuestionId) {
+        this.currentQuestionId = currentQuestionId;
+    }
+
+    public Integer getQueuePosition() {
+        return queuePosition;
+    }
+
+    public void setQueuePosition(Integer queuePosition) {
+        this.queuePosition = queuePosition;
+    }
+
+    /**
+     * 检查队列是否完成
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public boolean isQueueCompleted() {
+        return queuePosition != null && expectedQuestionCount != null &&
+                queuePosition >= expectedQuestionCount;
+    }
+
+    /**
+     * 获取队列进度百分比
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public double getQueueProgress() {
+        if (expectedQuestionCount == null || expectedQuestionCount == 0) {
+            return 0.0;
+        }
+        return (double) (queuePosition == null ? 0 : queuePosition) / expectedQuestionCount * 100;
+    }
 }

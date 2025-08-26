@@ -17,11 +17,15 @@ public class Session {
     private LocalDateTime startedAt;
     private LocalDateTime endedAt;
     private Boolean isActive;
+    private String questionQueue;
+    private Long currentQuestionId;
+    private Integer queuePosition;
 
     public Session() {
         this.isActive = true;
         this.askedQuestionCount = 0;
         this.completedQuestionCount = 0;
+        this.queuePosition = 0;
     }
 
     public Session(Long userId, SessionMode mode, Integer expectedQuestionCount) {
@@ -103,6 +107,45 @@ public class Session {
 
     public void setIsActive(Boolean isActive) {
         this.isActive = isActive;
+    }
+
+    public String getQuestionQueue() {
+        return questionQueue;
+    }
+
+    public void setQuestionQueue(String questionQueue) {
+        this.questionQueue = questionQueue;
+    }
+
+    public Long getCurrentQuestionId() {
+        return currentQuestionId;
+    }
+
+    public void setCurrentQuestionId(Long currentQuestionId) {
+        this.currentQuestionId = currentQuestionId;
+    }
+
+    public Integer getQueuePosition() {
+        return queuePosition;
+    }
+
+    public void setQueuePosition(Integer queuePosition) {
+        this.queuePosition = queuePosition;
+    }
+
+    // 新增便利方法
+    /**
+     * 移动到下一个位置
+     */
+    public void moveToNextPosition() {
+        this.queuePosition = (this.queuePosition == null) ? 1 : this.queuePosition + 1;
+    }
+
+    /**
+     * 重置队列位置
+     */
+    public void resetQueuePosition() {
+        this.queuePosition = 0;
     }
 
     /**

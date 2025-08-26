@@ -1,19 +1,28 @@
 package com.xinyu.InterviewCoach_v2.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xinyu.InterviewCoach_v2.dto.core.SessionDTO;
 import com.xinyu.InterviewCoach_v2.entity.Session;
+import com.xinyu.InterviewCoach_v2.entity.Question;
 import com.xinyu.InterviewCoach_v2.enums.SessionMode;
+import com.xinyu.InterviewCoach_v2.mapper.QuestionMapper;
 import com.xinyu.InterviewCoach_v2.mapper.SessionMapper;
 import com.xinyu.InterviewCoach_v2.service.cache.RedisSessionManager;
 import com.xinyu.InterviewCoach_v2.util.DTOConverter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -32,6 +41,20 @@ public class SessionService {
 
     @Autowired
     private DTOConverter dtoConverter;
+
+    @Autowired
+    @Qualifier("objectRedisTemplate")
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private QuestionMapper questionMapper;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private static final String QUEUE_CACHE_PREFIX = "session:queue:";
+    private static final String CURRENT_QUESTION_CACHE_PREFIX = "session:current:";
+    private static final int CACHE_TTL_SECONDS = 1800;
+
 
     /**
      * 创建新会话
@@ -301,5 +324,223 @@ public class SessionService {
     public boolean isSessionActive(Long sessionId) {
         Optional<SessionDTO> session = getSessionById(sessionId); // 会走缓存逻辑
         return session.isPresent() && session.get().getIsActive();
+    }
+
+    /**
+     * 初始化会话题目队列
+     */
+    @Transactional
+    public void initializeQuestionQueue(Long sessionId, List<Long> questionIds) {
+        if (questionIds == null || questionIds.isEmpty()) {
+            throw new IllegalArgumentException("题目队列不能为空");
+        }
+
+        try {
+            // 1. 序列化队列到JSON
+            String queueJson = objectMapper.writeValueAsString(questionIds);
+
+            // 2. 更新数据库
+            sessionMapper.updateQuestionQueue(sessionId, queueJson, 0);
+
+            // 3. 缓存到Redis
+            cacheQuestionQueue(sessionId, questionIds);
+
+            logger.debug("初始化会话 {} 题目队列，包含 {} 个题目", sessionId, questionIds.size());
+
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("序列化题目队列失败", e);
+        }
+    }
+
+    /**
+     * 获取当前题目
+     */
+    public Question getCurrentQuestion(Long sessionId) {
+        List<Long> questionQueue = getQuestionQueue(sessionId);
+        if (questionQueue == null || questionQueue.isEmpty()) {
+            return null;
+        }
+
+        Optional<SessionDTO> sessionOpt = getSessionById(sessionId);
+        if (sessionOpt.isEmpty()) {
+            return null;
+        }
+
+        int currentPosition = sessionOpt.get().getQueuePosition();
+        if (currentPosition >= questionQueue.size()) {
+            return null; // 队列已完成
+        }
+
+        Long questionId = questionQueue.get(currentPosition);
+        return questionMapper.findById(questionId).orElse(null);
+    }
+
+    /**
+     * 获取上一题ID（用于生成反馈时获取答案）
+     */
+    public Long getPreviousQuestionId(Long sessionId) {
+        List<Long> questionQueue = getQuestionQueue(sessionId);
+        if (questionQueue == null || questionQueue.isEmpty()) {
+            return null;
+        }
+
+        Optional<SessionDTO> sessionOpt = getSessionById(sessionId);
+        if (sessionOpt.isEmpty()) {
+            return null;
+        }
+
+        int currentPosition = sessionOpt.get().getQueuePosition();
+
+        // 如果当前位置是0，说明还没开始问题或者刚开始，没有上一题
+        if (currentPosition <= 0) {
+            return null;
+        }
+
+        // 上一题的位置是 currentPosition - 1
+        int previousPosition = currentPosition - 1;
+        if (previousPosition >= 0 && previousPosition < questionQueue.size()) {
+            return questionQueue.get(previousPosition);
+        }
+
+        return null;
+    }
+
+    /**
+     * 移动到下一题
+     */
+    @Transactional
+    public boolean moveToNextQuestion(Long sessionId) {
+        Optional<SessionDTO> sessionOpt = getSessionById(sessionId);
+        if (sessionOpt.isEmpty()) {
+            return false;
+        }
+
+        SessionDTO session = sessionOpt.get();
+        int newPosition = session.getQueuePosition() + 1;
+
+        // 更新数据库
+        boolean success = sessionMapper.updateQueuePosition(sessionId, newPosition) > 0;
+
+        if (success) {
+            // 更新缓存中的session数据
+            session.setQueuePosition(newPosition);
+            redisSessionManager.cacheSession(session);
+
+            // 增加已问题目计数
+            incrementAskedQuestionCount(sessionId);
+
+            logger.debug("会话 {} 移动到下一题，新位置: {}", sessionId, newPosition);
+        }
+
+        return success;
+    }
+
+    /**
+     * 检查是否还有更多题目
+     */
+    public boolean hasMoreQuestions(Long sessionId) {
+        List<Long> questionQueue = getQuestionQueue(sessionId);
+        if (questionQueue == null || questionQueue.isEmpty()) {
+            return false;
+        }
+
+        Optional<SessionDTO> sessionOpt = getSessionById(sessionId);
+        if (sessionOpt.isEmpty()) {
+            return false;
+        }
+
+        return sessionOpt.get().getQueuePosition() < questionQueue.size();
+    }
+
+    /**
+     * 获取题目队列（优先从缓存）
+     */
+    public List<Long> getQuestionQueue(Long sessionId) {
+        // 1. 先从缓存获取
+        List<Long> cachedQueue = getQuestionQueueFromCache(sessionId);
+        if (cachedQueue != null) {
+            return cachedQueue;
+        }
+
+        // 2. 从数据库加载
+        List<Long> dbQueue = loadQuestionQueueFromDatabase(sessionId);
+        if (dbQueue != null) {
+            // 回填缓存
+            cacheQuestionQueue(sessionId, dbQueue);
+        }
+
+        return dbQueue;
+    }
+
+    /**
+     * 从缓存获取题目队列
+     */
+    /**
+     * 从缓存获取题目队列
+     */
+    @SuppressWarnings("unchecked")
+    private List<Long> getQuestionQueueFromCache(Long sessionId) {
+        try {
+            String cacheKey = QUEUE_CACHE_PREFIX + sessionId;
+            Object cached = redisTemplate.opsForValue().get(cacheKey);
+            if (cached != null) {
+                // 处理Redis反序列化时Integer和Long的类型转换问题
+                if (cached instanceof List<?>) {
+                    List<?> rawList = (List<?>) cached;
+                    List<Long> questionIds = new ArrayList<>();
+                    for (Object item : rawList) {
+                        if (item instanceof Number) {
+                            questionIds.add(((Number) item).longValue());
+                        }
+                    }
+                    return questionIds;
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("从缓存获取题目队列失败: sessionId={}", sessionId, e);
+        }
+        return null;
+    }
+
+    /**
+     * 缓存题目队列
+     */
+    private void cacheQuestionQueue(Long sessionId, List<Long> questionIds) {
+        try {
+            String cacheKey = QUEUE_CACHE_PREFIX + sessionId;
+            redisTemplate.opsForValue().set(cacheKey, questionIds, CACHE_TTL_SECONDS, TimeUnit.SECONDS);
+            logger.debug("缓存题目队列: sessionId={}, size={}", sessionId, questionIds.size());
+        } catch (Exception e) {
+            logger.warn("缓存题目队列失败: sessionId={}", sessionId, e);
+        }
+    }
+
+    /**
+     * 从数据库加载题目队列
+     */
+    private List<Long> loadQuestionQueueFromDatabase(Long sessionId) {
+        try {
+            String queueJson = sessionMapper.getQuestionQueue(sessionId);
+            if (queueJson != null && !queueJson.trim().isEmpty()) {
+                return objectMapper.readValue(queueJson,
+                        new TypeReference<List<Long>>() {});
+            }
+        } catch (Exception e) {
+            logger.error("从数据库加载题目队列失败: sessionId={}", sessionId, e);
+        }
+        return null;
+    }
+
+    /**
+     * 清理会话队列缓存
+     */
+    public void clearSessionQueueCache(Long sessionId) {
+        try {
+            redisTemplate.delete(QUEUE_CACHE_PREFIX + sessionId);
+            redisTemplate.delete(CURRENT_QUESTION_CACHE_PREFIX + sessionId);
+            logger.debug("清理会话队列缓存: sessionId={}", sessionId);
+        } catch (Exception e) {
+            logger.warn("清理会话队列缓存失败: sessionId={}", sessionId, e);
+        }
     }
 }

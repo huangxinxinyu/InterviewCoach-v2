@@ -80,7 +80,7 @@ public class ChatController {
                         .body(new ApiErrorResponseDTO("用户未认证", "UNAUTHORIZED"));
             }
 
-            ChatMessageResponseDTO response = chatService.processUserMessage(userId, sessionId, request);
+            ChatMessageResponseDTO response = chatService.processMessage(userId, sessionId, request);
 
             if (response.isSuccess()) {
                 return ResponseEntity.ok(response);

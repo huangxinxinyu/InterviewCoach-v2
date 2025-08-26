@@ -12,42 +12,41 @@ import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 /**
- * Redis配置类
+ * Redis配置类 - 只配置objectRedisTemplate，复用Spring Boot的stringRedisTemplate
  */
 @Configuration
 public class RedisConfig {
 
     /**
-     * 配置RedisTemplate
+     * 配置RedisTemplate<String, Object> - 支持复杂对象
+     * Spring Boot会自动配置StringRedisTemplate，这里只添加objectRedisTemplate
      */
-    @Bean
-    public RedisTemplate<String, String> redisTemplate(RedisConnectionFactory connectionFactory) {
-        RedisTemplate<String, String> template = new RedisTemplate<>();
+    @Bean("objectRedisTemplate")
+    public RedisTemplate<String, Object> objectRedisTemplate(RedisConnectionFactory connectionFactory) {
+        RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
 
-        // 使用String序列化器作为key的序列化器
+        // Key序列化器使用String
         StringRedisSerializer stringRedisSerializer = new StringRedisSerializer();
-
-        // 设置key和hashKey的序列化器
         template.setKeySerializer(stringRedisSerializer);
         template.setHashKeySerializer(stringRedisSerializer);
 
-        // 设置value和hashValue的序列化器
-        template.setValueSerializer(stringRedisSerializer);
-        template.setHashValueSerializer(stringRedisSerializer);
+        // Value序列化器使用Jackson2Json (新方式)
+        Jackson2JsonRedisSerializer<Object> jackson2JsonRedisSerializer =
+                new Jackson2JsonRedisSerializer<>(objectMapper(), Object.class);
 
-        // 设置默认序列化器
-        template.setDefaultSerializer(stringRedisSerializer);
+        template.setValueSerializer(jackson2JsonRedisSerializer);
+        template.setHashValueSerializer(jackson2JsonRedisSerializer);
 
         template.afterPropertiesSet();
         return template;
     }
 
     /**
-     * 配置ObjectMapper用于JSON序列化
+     * 配置ObjectMapper用于Redis序列化
      */
     @Bean
-    public ObjectMapper redisObjectMapper() {
+    public ObjectMapper objectMapper() {
         ObjectMapper mapper = new ObjectMapper();
 
         // 支持Java 8时间类型
@@ -58,6 +57,9 @@ public class RedisConfig {
 
         // 禁用时间戳格式
         mapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
+        // 忽略未知属性，避免反序列化错误
+        mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
         return mapper;
     }

@@ -75,17 +75,6 @@ public class AIResponseCacheManager {
     private Counter apiCallSaved;
     private Counter embeddingCallMade;
 
-    // 中文技术关键词字典 - 作为embedding的补充
-    private static final Set<String> CHINESE_TECH_KEYWORDS = Set.of(
-            "数组列表", "哈希表", "散列表", "链表", "向量", "集合", "映射",
-            "线程", "同步", "并发", "锁", "原子性", "可见性", "有序性",
-            "春天框架", "spring", "springboot", "mybatis", "redis", "mysql", "数据库",
-            "虚拟机", "垃圾回收", "堆内存", "栈内存", "方法区", "类", "接口", "继承", "多态",
-            "超文本传输协议", "传输控制协议", "用户数据报协议", "接口", "json", "xml",
-            "算法", "复杂度", "时间复杂度", "空间复杂度", "大O记号法",
-            "二分查找", "快速排序", "归并排序", "动态规划", "贪心算法"
-    );
-
     @PostConstruct
     private void initMetrics() {
         if (meterRegistry != null) {

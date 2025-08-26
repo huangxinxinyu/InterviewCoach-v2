@@ -157,4 +157,35 @@ public interface SessionMapper {
             @Result(property = "isActive", column = "is_active")
     })
     List<Session> findRecentActiveSessions();
+
+    // 在SessionMapper.java中添加的新方法
+
+    /**
+     * 更新会话题目队列和位置
+     */
+    @Update("UPDATE session SET question_queue = #{questionQueue}, queue_position = #{queuePosition} " +
+            "WHERE id = #{sessionId}")
+    int updateQuestionQueue(@Param("sessionId") Long sessionId,
+                            @Param("questionQueue") String questionQueue,
+                            @Param("queuePosition") Integer queuePosition);
+
+    /**
+     * 设置当前题目
+     */
+    @Update("UPDATE session SET current_question_id = #{currentQuestionId} WHERE id = #{sessionId}")
+    int updateCurrentQuestion(@Param("sessionId") Long sessionId,
+                              @Param("currentQuestionId") Long currentQuestionId);
+
+    /**
+     * 更新队列位置
+     */
+    @Update("UPDATE session SET queue_position = #{queuePosition} WHERE id = #{sessionId}")
+    int updateQueuePosition(@Param("sessionId") Long sessionId,
+                            @Param("queuePosition") Integer queuePosition);
+
+    /**
+     * 获取会话题目队列JSON
+     */
+    @Select("SELECT question_queue FROM session WHERE id = #{sessionId}")
+    String getQuestionQueue(Long sessionId);
 }

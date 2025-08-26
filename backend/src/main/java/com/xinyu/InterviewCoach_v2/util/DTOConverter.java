@@ -96,36 +96,56 @@ public class DTOConverter {
                 .collect(Collectors.toList());
     }
 
-    /**
-     * 将Session实体转换为SessionDTO
-     */
+
     public SessionDTO convertToSessionDTO(Session session) {
         if (session == null) {
             return null;
         }
-        return new SessionDTO(
-                session.getId(),
-                session.getUserId(),
-                session.getMode(),
-                session.getExpectedQuestionCount(),
-                session.getAskedQuestionCount(),
-                session.getCompletedQuestionCount(),
-                session.getStartedAt(),
-                session.getEndedAt(),
-                session.getIsActive()
-        );
+
+        SessionDTO dto = new SessionDTO();
+        dto.setId(session.getId());
+        dto.setUserId(session.getUserId());
+        dto.setMode(session.getMode());
+        dto.setExpectedQuestionCount(session.getExpectedQuestionCount());
+        dto.setAskedQuestionCount(session.getAskedQuestionCount());
+        dto.setCompletedQuestionCount(session.getCompletedQuestionCount());
+        dto.setStartedAt(session.getStartedAt());
+        dto.setEndedAt(session.getEndedAt());
+        dto.setIsActive(session.getIsActive());
+
+        // 新增队列相关字段转换
+        dto.setQuestionQueue(session.getQuestionQueue());
+        dto.setCurrentQuestionId(session.getCurrentQuestionId());
+        dto.setQueuePosition(session.getQueuePosition());
+
+        return dto;
     }
 
     /**
-     * 批量转换Session实体列表为SessionDTO列表
+     * 转换SessionDTO为Session实体 - 更新版本
      */
-    public List<SessionDTO> convertToSessionDTOList(List<Session> sessions) {
-        if (sessions == null) {
+    public Session convertToSessionEntity(SessionDTO dto) {
+        if (dto == null) {
             return null;
         }
-        return sessions.stream()
-                .map(this::convertToSessionDTO)
-                .collect(Collectors.toList());
+
+        Session session = new Session();
+        session.setId(dto.getId());
+        session.setUserId(dto.getUserId());
+        session.setMode(dto.getMode());
+        session.setExpectedQuestionCount(dto.getExpectedQuestionCount());
+        session.setAskedQuestionCount(dto.getAskedQuestionCount());
+        session.setCompletedQuestionCount(dto.getCompletedQuestionCount());
+        session.setStartedAt(dto.getStartedAt());
+        session.setEndedAt(dto.getEndedAt());
+        session.setIsActive(dto.getIsActive());
+
+        // 新增队列相关字段转换
+        session.setQuestionQueue(dto.getQuestionQueue());
+        session.setCurrentQuestionId(dto.getCurrentQuestionId());
+        session.setQueuePosition(dto.getQueuePosition());
+
+        return session;
     }
 
     /**
