@@ -17,9 +17,9 @@ public interface SessionMapper {
      * 插入新会话
      */
     @Insert("INSERT INTO session (user_id, mode, expected_question_count, asked_question_count, " +
-            "completed_question_count, started_at, is_active) " +
+            "completed_question_count, started_at, is_active, queue_position) " +
             "VALUES (#{userId}, #{mode}, #{expectedQuestionCount}, #{askedQuestionCount}, " +
-            "#{completedQuestionCount}, #{startedAt}, #{isActive})")
+            "#{completedQuestionCount}, #{startedAt}, #{isActive}, #{queuePosition})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(Session session);
 
@@ -27,7 +27,8 @@ public interface SessionMapper {
      * 根据ID查询会话
      */
     @Select("SELECT id, user_id, mode, expected_question_count, asked_question_count, " +
-            "completed_question_count, started_at, ended_at, is_active " +
+            "completed_question_count, started_at, ended_at, is_active, " +
+            "question_queue, current_question_id, queue_position " +
             "FROM session WHERE id = #{id}")
     @Results({
             @Result(property = "id", column = "id"),
@@ -38,7 +39,10 @@ public interface SessionMapper {
             @Result(property = "completedQuestionCount", column = "completed_question_count"),
             @Result(property = "startedAt", column = "started_at"),
             @Result(property = "endedAt", column = "ended_at"),
-            @Result(property = "isActive", column = "is_active")
+            @Result(property = "isActive", column = "is_active"),
+            @Result(property = "questionQueue", column = "question_queue"),
+            @Result(property = "currentQuestionId", column = "current_question_id"),
+            @Result(property = "queuePosition", column = "queue_position")
     })
     Optional<Session> findById(Long id);
 
@@ -66,7 +70,8 @@ public interface SessionMapper {
      * 根据用户ID查询所有会话
      */
     @Select("SELECT id, user_id, mode, expected_question_count, asked_question_count, " +
-            "completed_question_count, started_at, ended_at, is_active " +
+            "completed_question_count, started_at, ended_at, is_active, " +
+            "question_queue, current_question_id, queue_position " +
             "FROM session WHERE user_id = #{userId} " +
             "ORDER BY started_at DESC")
     @Results({
@@ -78,7 +83,10 @@ public interface SessionMapper {
             @Result(property = "completedQuestionCount", column = "completed_question_count"),
             @Result(property = "startedAt", column = "started_at"),
             @Result(property = "endedAt", column = "ended_at"),
-            @Result(property = "isActive", column = "is_active")
+            @Result(property = "isActive", column = "is_active"),
+            @Result(property = "questionQueue", column = "question_queue"),
+            @Result(property = "currentQuestionId", column = "current_question_id"),
+            @Result(property = "queuePosition", column = "queue_position")
     })
     List<Session> findByUserId(Long userId);
 

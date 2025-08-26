@@ -150,41 +150,6 @@ public class SessionService {
     }
 
     /**
-     * 更新会话 - 更新缓存
-     */
-    @Transactional
-    public SessionDTO updateSession(SessionDTO sessionDTO) {
-        Optional<Session> existingSession = sessionMapper.findById(sessionDTO.getId());
-        if (existingSession.isEmpty()) {
-            throw new RuntimeException("会话不存在");
-        }
-
-        Session session = existingSession.get();
-        session.setExpectedQuestionCount(sessionDTO.getExpectedQuestionCount());
-        session.setAskedQuestionCount(sessionDTO.getAskedQuestionCount());
-        session.setCompletedQuestionCount(sessionDTO.getCompletedQuestionCount());
-        session.setEndedAt(sessionDTO.getEndedAt());
-        session.setIsActive(sessionDTO.getIsActive());
-
-        int result = sessionMapper.update(session);
-        if (result > 0) {
-            SessionDTO updatedSession = dtoConverter.convertToSessionDTO(session);
-            // 更新缓存
-            redisSessionManager.cacheSession(updatedSession);
-
-            // 如果会话已结束，清除用户活跃会话缓存
-            if (!updatedSession.getIsActive()) {
-                redisSessionManager.removeUserActiveSession(session.getUserId());
-            }
-
-            logger.debug("更新会话并同步缓存: sessionId={}", updatedSession.getId());
-            return updatedSession;
-        } else {
-            throw new RuntimeException("更新会话失败");
-        }
-    }
-
-    /**
      * 增加已提问题目数量 - 同步缓存
      */
     @Transactional
@@ -449,6 +414,8 @@ public class SessionService {
             return false;
         }
 
+        System.out.println("---------------has more question");
+
         return sessionOpt.get().getQueuePosition() < questionQueue.size();
     }
 
@@ -472,9 +439,6 @@ public class SessionService {
         return dbQueue;
     }
 
-    /**
-     * 从缓存获取题目队列
-     */
     /**
      * 从缓存获取题目队列
      */

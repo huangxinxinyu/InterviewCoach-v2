@@ -187,6 +187,7 @@ public class ChatService {
 
                 // 移动到下一题
                 sessionService.moveToNextQuestion(sessionId);
+                System.out.println("question position ++");
                 // 增加完成题目计数
                 sessionService.incrementCompletedQuestionCount(sessionId);
 
@@ -419,9 +420,6 @@ public class ChatService {
         return selectedQuestionIds;
     }
 
-    /**
-     * 生成开场消息
-     */
     /**
      * 生成开场消息
      */
