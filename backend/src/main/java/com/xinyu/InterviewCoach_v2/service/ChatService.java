@@ -291,10 +291,13 @@ public class ChatService {
      * 处理STRUCTURED_SET模式
      */
     private List<Long> handleStructuredSetMode(StartInterviewRequestDTO request) {
-        if (request.getQuestionIds() == null || request.getQuestionIds().isEmpty()) {
-            throw new RuntimeException("STRUCTURED_SET模式需要指定题目ID列表");
+        if (request.getQuestionSetId() != null) {
+            return questionSetService.getQuestionIdsBySetId(request.getQuestionSetId());
+        } else if (request.getQuestionIds() != null && !request.getQuestionIds().isEmpty()) {
+            return new ArrayList<>(request.getQuestionIds());
+        } else {
+            throw new RuntimeException("STRUCTURED_SET模式需要指定题集ID或题目ID列表");
         }
-        return new ArrayList<>(request.getQuestionIds());
     }
 
     /**
@@ -305,12 +308,17 @@ public class ChatService {
             throw new RuntimeException("STRUCTURED_TEMPLATE模式需要指定模板ID");
         }
 
-        Optional<TemplateDTO> templateOpt = templateService.getTemplateById(request.getTemplateId());
-        if (templateOpt.isEmpty()) {
-            throw new RuntimeException("模板不存在: " + request.getTemplateId());
+        TemplateDTO template;
+        try {
+            template = templateService.parseTemplateContent(request.getTemplateId());
+        } catch (RuntimeException e) {
+            throw new RuntimeException("模板不存在或解析失败: " + request.getTemplateId());
         }
 
-        TemplateDTO template = templateOpt.get();
+        if (template.getSections() == null || template.getSections().isEmpty()) {
+            throw new RuntimeException("模板内容为空或格式错误，无法解析章节信息");
+        }
+
         List<Long> allQuestionIds = new ArrayList<>();
 
         for (TemplateDTO.TemplateSection section : template.getSections()) {
@@ -318,9 +326,12 @@ public class ChatService {
             allQuestionIds.addAll(sectionQuestions);
         }
 
+        if (allQuestionIds.isEmpty()) {
+            throw new RuntimeException("模板中没有找到可用的题目");
+        }
+
         return allQuestionIds;
     }
-
 
     /**
      * 处理SINGLE_TOPIC模式
