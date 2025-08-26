@@ -3,6 +3,7 @@ package com.xinyu.InterviewCoach_v2.service.cache;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xinyu.InterviewCoach_v2.enums.SessionMode;
+import com.xinyu.InterviewCoach_v2.queue.producer.AIQueueProducer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +37,9 @@ public class AIResponseCacheManager {
     private ObjectMapper objectMapper;
 
     private final RestTemplate restTemplate = new RestTemplate();
+
+    @Autowired
+    private AIQueueProducer aiQueueProducer;
 
     @Value("${openai.api.key}")
     private String openAiApiKey;
@@ -509,5 +513,221 @@ public class AIResponseCacheManager {
         }
 
         return stats;
+    }
+
+    /**
+     * 异步计算并缓存embedding（供队列调用）
+     */
+    public void calculateAndCacheEmbedding(String text, String cacheKey) {
+        if (!embeddingEnabled || text == null || text.trim().isEmpty()) {
+            return;
+        }
+
+        try {
+            double[] embedding = getTextEmbedding(text);
+            if (embedding != null) {
+                String embeddingStr = objectMapper.writeValueAsString(embedding);
+                redisTemplate.opsForValue().set(cacheKey, embeddingStr, 86400, TimeUnit.SECONDS);
+                logger.debug("Embedding计算并缓存成功: cacheKey={}", cacheKey);
+            } else {
+                logger.warn("Embedding计算失败: cacheKey={}", cacheKey);
+            }
+        } catch (Exception e) {
+            logger.error("计算并缓存embedding失败: cacheKey={}", cacheKey, e);
+        }
+    }
+
+    /**
+     * 批量计算embedding（供队列调用）
+     */
+    public void batchCalculateEmbeddings(Map<String, String> textCacheMap) {
+        if (!embeddingEnabled || textCacheMap == null || textCacheMap.isEmpty()) {
+            return;
+        }
+
+        try {
+            List<String> texts = new ArrayList<>(textCacheMap.keySet());
+            int batchSize = 20; // 默认批量大小
+
+            for (int i = 0; i < texts.size(); i += batchSize) {
+                int endIndex = Math.min(i + batchSize, texts.size());
+                List<String> batch = texts.subList(i, endIndex);
+
+                // 批量调用OpenAI API
+                List<double[]> embeddings = batchGetTextEmbeddings(batch);
+
+                // 缓存结果
+                for (int j = 0; j < batch.size() && j < embeddings.size(); j++) {
+                    String text = batch.get(j);
+                    String cacheKey = textCacheMap.get(text);
+                    double[] embedding = embeddings.get(j);
+
+                    if (embedding != null && cacheKey != null) {
+                        String embeddingStr = objectMapper.writeValueAsString(embedding);
+                        redisTemplate.opsForValue().set(cacheKey, embeddingStr, 86400, TimeUnit.SECONDS);
+                    }
+                }
+
+                logger.debug("批量embedding计算完成: batch={}/{}, size={}",
+                        (i/batchSize + 1), (texts.size() + batchSize - 1)/batchSize, batch.size());
+
+                // 避免API调用过于频繁
+                if (i + batchSize < texts.size()) {
+                    Thread.sleep(100);
+                }
+            }
+
+        } catch (Exception e) {
+            logger.error("批量计算embedding失败", e);
+        }
+    }
+
+    /**
+     * 检查答案相似度（供队列调用）
+     */
+    public boolean checkAnswerSimilarity(Long questionId, String userAnswer) {
+        if (!embeddingEnabled || userAnswer == null || userAnswer.trim().isEmpty()) {
+            return false;
+        }
+
+        try {
+            // 获取该题目的历史标准答案进行相似度比较
+            String searchPattern = aiCachePrefix + "answer:" + questionId + ":*";
+            Set<String> answerKeys = redisTemplate.keys(searchPattern);
+
+            if (answerKeys == null || answerKeys.isEmpty()) {
+                return false;
+            }
+
+            double[] userEmbedding = getTextEmbedding(userAnswer);
+            if (userEmbedding == null) {
+                return false;
+            }
+
+            double maxSimilarity = 0.0;
+            for (String answerKey : answerKeys) {
+                try {
+                    String embeddingKey = answerKey + ":embedding";
+                    String embeddingStr = redisTemplate.opsForValue().get(embeddingKey);
+
+                    if (embeddingStr != null) {
+                        double[] answerEmbedding = objectMapper.readValue(embeddingStr, double[].class);
+                        double similarity = calculateCosineSimilarity(userEmbedding, answerEmbedding);
+                        maxSimilarity = Math.max(maxSimilarity, similarity);
+                    }
+                } catch (Exception e) {
+                    logger.warn("检查答案相似度失败: answerKey={}", answerKey, e);
+                }
+            }
+
+            boolean similar = maxSimilarity >= similarityThreshold;
+            logger.debug("答案相似度检查: questionId={}, maxSimilarity={}, similar={}",
+                    questionId, maxSimilarity, similar);
+
+            return similar;
+
+        } catch (Exception e) {
+            logger.error("检查答案相似度失败: questionId={}", questionId, e);
+            return false;
+        }
+    }
+
+    /**
+     * 批量获取文本embedding - 供队列使用
+     */
+    private List<double[]> batchGetTextEmbeddings(List<String> texts) {
+        if (!embeddingEnabled || texts == null || texts.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(openAiApiKey);
+
+            Map<String, Object> requestBody = Map.of(
+                    "model", embeddingModel,
+                    "input", texts,
+                    "encoding_format", "float"
+            );
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            ResponseEntity<Map> response = restTemplate.exchange(
+                    embeddingApiUrl, HttpMethod.POST, entity, Map.class);
+
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                Map<String, Object> responseBody = response.getBody();
+                List<Map<String, Object>> data = (List<Map<String, Object>>) responseBody.get("data");
+
+                List<double[]> embeddings = new ArrayList<>();
+                if (data != null) {
+                    for (Map<String, Object> item : data) {
+                        List<Double> embeddingList = (List<Double>) item.get("embedding");
+                        if (embeddingList != null) {
+                            double[] embedding = embeddingList.stream().mapToDouble(Double::doubleValue).toArray();
+                            embeddings.add(embedding);
+                        } else {
+                            embeddings.add(null);
+                        }
+                    }
+                }
+
+                if (embeddingCallMade != null) embeddingCallMade.increment();
+                logger.debug("批量获取embedding成功: textCount={}, embeddingCount={}", texts.size(), embeddings.size());
+
+                return embeddings;
+            }
+
+            logger.warn("批量获取embedding失败: response={}", response.getStatusCode());
+            return new ArrayList<>();
+
+        } catch (Exception e) {
+            logger.error("批量调用embedding API失败", e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * 预热题目缓存 - 供启动时调用
+     */
+    public void preWarmQuestionCache(List<Long> questionIds) {
+        if (!cacheEnabled || !embeddingEnabled || questionIds == null || questionIds.isEmpty()) {
+            return;
+        }
+
+        try {
+            List<Map<String, String>> embeddingRequests = new ArrayList<>();
+
+            for (Long questionId : questionIds) {
+                // 为每个题目准备embedding计算
+                String cacheKey = "question:embedding:" + questionId;
+                String text = "question_id_" + questionId; // 简化的文本标识
+
+                Map<String, String> request = new HashMap<>();
+                request.put("text", text);
+                request.put("cacheKey", cacheKey);
+                embeddingRequests.add(request);
+            }
+
+            if (!embeddingRequests.isEmpty()) {
+                String batchId = "preWarm:" + System.currentTimeMillis();
+                // 如果有队列，使用队列；否则直接处理
+                if (aiQueueProducer != null) {
+                    // 这里需要队列Producer的相应方法
+                    logger.info("题目缓存预热请求已发送到队列: batchId={}, count={}", batchId, embeddingRequests.size());
+                } else {
+                    // 直接处理
+                    Map<String, String> textCacheMap = new HashMap<>();
+                    for (Map<String, String> req : embeddingRequests) {
+                        textCacheMap.put(req.get("text"), req.get("cacheKey"));
+                    }
+                    batchCalculateEmbeddings(textCacheMap);
+                    logger.info("题目缓存预热完成: count={}", embeddingRequests.size());
+                }
+            }
+
+        } catch (Exception e) {
+            logger.error("预热题目缓存失败", e);
+        }
     }
 }

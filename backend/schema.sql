@@ -89,12 +89,23 @@ CREATE TABLE IF NOT EXISTS `session` (
   `started_at` DATETIME NOT NULL COMMENT '会话开始时间',
   `ended_at` DATETIME NULL COMMENT '会话结束时间',
   `is_active` BOOLEAN NOT NULL DEFAULT TRUE COMMENT '会话是否活跃',
+  `question_queue` JSON COMMENT '题目队列(JSON数组存储question_id)',
+  `current_question_id` BIGINT NULL COMMENT '当前题目ID',
+  `queue_position` INTEGER NOT NULL DEFAULT 0 COMMENT '队列当前位置',
   PRIMARY KEY (`id`),
   INDEX `idx_user_id` (`user_id` ASC) VISIBLE,
+  INDEX `idx_session_current_question` (`current_question_id` ASC),
+  INDEX `idx_session_user_active` (`user_id`, `is_active`),
+  INDEX `idx_session_created_user` (`user_id`, `started_at`),
   CONSTRAINT `fk_session_user`
     FOREIGN KEY (`user_id`)
     REFERENCES `user` (`id`)
     ON DELETE CASCADE
+    ON UPDATE CASCADE,
+  CONSTRAINT `fk_session_current_question`
+    FOREIGN KEY (`current_question_id`)
+    REFERENCES `question` (`id`)
+    ON DELETE SET NULL
     ON UPDATE CASCADE)
 ENGINE = InnoDB
 COMMENT = '会话表';

@@ -1,11 +1,9 @@
 spring:
-  # 数据库配置
   datasource:
     url: jdbc:mysql://localhost:3306/interviewcoach-v2?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=UTF-8
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
-
     hikari:
       minimum-idle: 5
       maximum-pool-size: 20
@@ -15,7 +13,7 @@ spring:
       pool-name: HikariCP-InterviewCoach
       connection-test-query: SELECT 1
 
-  # 邮件配置
+  # 邮件配置（保持不变）
   mail:
     host: smtp.gmail.com
     port: 587
@@ -30,24 +28,24 @@ spring:
           ssl:
             trust: smtp.gmail.com
 
-  # Redis配置
+  # Redis配置（保持不变，但调优）
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
       database: 0
-      timeout: 2000ms
+      timeout: 3000ms                     # 增加超时时间，适应队列操作
       lettuce:
         pool:
           max-active: 200
           max-wait: -1ms
-          max-idle: 10
-          min-idle: 0
-      # 序列化配置
-      serialization:
-        key-serializer: string
-        value-serializer: json
+          max-idle: 20                    # 增加空闲连接，适应队列需求
+          min-idle: 5
+        cluster:
+          refresh:
+            adaptive: true                # 支持集群动态刷新
+            period: 30000ms
 
 # MyBatis配置
 mybatis:
@@ -66,10 +64,15 @@ openai:
   api:
     key: ${OPENAI_API_KEY}
     url: ${OPENAI_API_URL:https://api.openai.com/v1/chat/completions}
+    timeout: 30000                        # API超时30秒
+    max-retries: 2                        # 最大重试2次
+    retry-delay-ms: 1000                  # 重试延迟1秒
   model: ${OPENAI_MODEL:gpt-3.5-turbo}
   embedding:
     url: ${OPENAI_EMBEDDING_URL:https://api.openai.com/v1/embeddings}
     model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+    batch-size: 20                        # 批量处理大小
+    timeout: 25000                        # embedding API超时25秒
 
 # 面试配置
 interview:
@@ -85,27 +88,75 @@ email:
 # 缓存配置
 cache:
   session:
-    ttl: 1800  # 30分钟过期时间（秒）
+    ttl: 1800
     prefix: "session:"
   message:
-    ttl: 3600  # 消息缓存1小时
+    ttl: 3600
     prefix: "message:"
-  # 新增AI响应缓存配置
   ai:
-    enabled: true  # 是否启用AI响应缓存
+    enabled: true
     prefix: "ai:"
     first-question:
-      ttl: 604800  # 第一题缓存7天
+      ttl: 604800                         # 第一题缓存7天
     feedback:
-      ttl: 259200  # 反馈缓存3天
-    similarity-threshold: 0.85  # 中文语义相似度阈值
+      ttl: 259200                         # 反馈缓存3天
+    similarity-threshold: 0.85            # 中文语义相似度阈值
     embedding:
-      enabled: true  # 是否启用embedding语义匹配
-    max-similar-answers: 10  # 最多检查多少个相似答案
+      enabled: true
+      ttl: 86400                          # embedding缓存1天
+    max-similar-answers: 10
 
-# 调试配置（可选）
-#debug: true
-#logging:
-#  level:
-#    org.springframework: DEBUG
-#    com.xinyu.InterviewCoach_v2: DEBUG
+queue:
+  ai:
+    enabled: ${AI_QUEUE_ENABLED:true}     # 环境变量控制，默认启用
+
+    # Redis Stream配置
+    streams:
+      requests: "ai:requests"             # AI请求流
+      responses: "ai:responses"           # AI响应流（暂不使用）
+
+    # 消费者配置
+    consumer:
+      group-name: "ai-service-group"
+      consumer-name: "ai-consumer-${server.port:8080}-${spring.application.name:app}"
+      max-messages: 10                    # 每次最多拉取10条消息
+      block-timeout: 2000                 # 阻塞等待2秒
+      auto-ack: false                     # 手动确认，保证消息不丢失
+
+    # 处理器配置
+    processors:
+      thread-pool-size: 8                 # AI处理线程池大小
+      max-retries: 3                      # 失败最大重试次数
+      retry-delay-seconds: 5              # 重试延迟5秒
+
+    # Topic启用配置
+    topics:
+      question-generation:
+        enabled: true
+        priority: "high"                  # 开场题目高优先级
+      feedback-generation:
+        enabled: true
+        priority: "high"                  # 反馈生成高优先级
+      embedding-calculation:
+        enabled: true
+        priority: "medium"                # embedding中优先级
+        batch-size: 20                    # 批处理大小
+      final-evaluation:
+        enabled: true
+        priority: "low"                   # 最终评价低优先级
+
+# WebSocket配置
+websocket:
+  chat:
+    enabled: ${WEBSOCKET_ENABLED:true}    # WebSocket开关
+    heartbeat-interval: 30000             # 心跳间隔30秒
+    max-text-message-size: 10240          # 最大消息大小10KB
+    max-binary-message-size: 0            # 不支持二进制消息
+
+# 日志配置
+logging:
+  level:
+    com.xinyu.InterviewCoach_v2.queue: DEBUG
+    com.xinyu.InterviewCoach_v2.websocket: DEBUG
+    com.xinyu.InterviewCoach_v2.service.ChatService: INFO
+    com.xinyu.InterviewCoach_v2.service.cache: DEBUG
