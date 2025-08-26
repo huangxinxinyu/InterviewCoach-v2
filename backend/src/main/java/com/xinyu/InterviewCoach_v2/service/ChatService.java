@@ -436,8 +436,7 @@ public class ChatService {
      */
     private String generateOpeningMessage(Question firstQuestion) {
 
-        String prompt = "你好！欢迎参加技术面试。我将作为面试官与你进行对话。\n\n" +
-                "现在开始我们的第一个问题：\n\n" +
+        String prompt = "你好！你是一位专业的技术面试官，现在正在直接与候选人对话。请以第一人称，将以下问题直接提问给候选人。不要回答问题本身，也不要提供任何指导建议或额外信息，直接提问即可。\n\n" +
                 firstQuestion.getText();
 
         return callOpenAI(prompt);
