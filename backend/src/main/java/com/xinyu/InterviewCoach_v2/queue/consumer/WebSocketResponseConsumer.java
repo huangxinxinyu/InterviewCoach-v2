@@ -186,8 +186,11 @@ public class WebSocketResponseConsumer {
      */
     private boolean processAIResponsePush(Map<String, Object> payload) {
         Long sessionId = getLongValue(payload, "sessionId");
-        String content = (String) payload.get("content");
+        String content = (String) payload.get("message");
         String currentState = (String) payload.get("currentState");
+
+        logger.debug("处理AI响应推送: sessionId={}, content={}, currentState={}",
+                sessionId, content != null ? "非null" : "null", currentState);
 
         return webSocketService.pushAIResponse(sessionId, content, currentState);
     }
