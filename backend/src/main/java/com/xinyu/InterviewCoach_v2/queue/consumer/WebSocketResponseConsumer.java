@@ -201,7 +201,7 @@ public class WebSocketResponseConsumer {
     private boolean processProcessingStatusPush(Map<String, Object> payload) {
         Long sessionId = getLongValue(payload, "sessionId");
         String status = (String) payload.get("status");
-        String details = (String) payload.get("details");
+        String details = (String) payload.get("progress");
 
         return webSocketService.pushAIProcessingStatus(sessionId, status, details);
     }
@@ -211,8 +211,8 @@ public class WebSocketResponseConsumer {
      */
     private boolean processSessionStatePush(Map<String, Object> payload) {
         Long sessionId = getLongValue(payload, "sessionId");
-        String state = (String) payload.get("state");
-        Boolean chatEnabled = (Boolean) payload.get("chatEnabled");
+        String state = (String) payload.get("currentState");
+        Boolean chatEnabled = (Boolean) payload.get("chatInputEnabled");
 
         return webSocketService.pushSessionStateUpdate(sessionId, state,
                 chatEnabled != null ? chatEnabled : false);

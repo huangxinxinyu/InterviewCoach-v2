@@ -220,7 +220,7 @@ public class WebSocketService {
                     "type", "ai_processing_status",
                     "sessionId", sessionId,
                     "status", status,
-                    "details", details != null ? details : "",
+                    "progress", details != null ? details : "",
                     "timestamp", System.currentTimeMillis()
             );
 
