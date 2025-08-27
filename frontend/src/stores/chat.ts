@@ -9,9 +9,9 @@ import type {
     Session,
     Message,
     StartInterviewRequest,
-    SessionMode,
     MessageType
 } from '@/types'
+import { SessionMode } from '@/types'
 import type {
     WSMessage,
     AIResponseMessage,
@@ -52,77 +52,37 @@ export const useChatStore = defineStore('chat', () => {
         return chatInputEnabled.value &&
             !isSessionCompleted.value &&
             !sending.value &&
-            // 确保AI没有在处理中，且连接就绪
             !isAIProcessing.value
     })
+
     const isSessionCompleted = computed(() => {
         return currentSession.value?.completed ||
             sessionState.value === SessionState.INTERVIEW_COMPLETED ||
             sessionState.value === SessionState.SESSION_ENDED
     })
 
-    // ===== 辅助函数（复用现有逻辑）=====
-    const generateTitle = (mode: SessionMode, startedAt: string): string => {
-        const modeNames = {
-            'SINGLE_TOPIC': '单主题面试',
-            'STRUCTURED_SET': '结构化面试',
-            'STRUCTURED_TEMPLATE': '模板面试'
-        }
-
-        const modeName = modeNames[mode] || '面试会话'
-        const date = new Date(startedAt).toLocaleDateString('zh-CN', {
-            month: 'short',
-            day: 'numeric'
-        })
-
-        return `${modeName} - ${date}`
-    }
-
-    const convertSessionDTOToSession = (sessionDTO: any): Session => {
-        return {
-            id: sessionDTO.id,
-            userId: sessionDTO.userId,
-            mode: sessionDTO.mode,
-            title: generateTitle(sessionDTO.mode, sessionDTO.startedAt),
-            completed: sessionDTO.isActive === false,
-            createdAt: sessionDTO.startedAt,
-            updatedAt: sessionDTO.endedAt || sessionDTO.startedAt,
-            expectedQuestionCount: sessionDTO.expectedQuestionCount,
-            askedQuestionCount: sessionDTO.askedQuestionCount,
-            completedQuestionCount: sessionDTO.completedQuestionCount,
-            startedAt: sessionDTO.startedAt,
-            endedAt: sessionDTO.endedAt,
-            isActive: sessionDTO.isActive
-        }
-    }
-
-    // ===== WebSocket事件处理器 =====
+    // ===== WebSocket消息处理器设置 =====
     const setupWebSocketHandlers = () => {
-        webSocketManager.setEventHandlers({
-            // 连接状态变化
+        console.log('🔧 设置WebSocket消息处理器')
+
+        const handlers = {
             onConnectionStateChange: (state: ConnectionState) => {
-                console.log('🔌 WebSocket状态变化:', state)
+                console.log('🔄 WebSocket状态变更:', state)
                 wsConnectionState.value = state
 
                 if (state === ConnectionState.CONNECTED) {
-                    // 连接成功时，处理消息缓冲区
+                    console.log('✅ WebSocket连接状态已同步为CONNECTED')
+                    chatInputEnabled.value = true
                     processMessageBuffer()
-                }
-
-                if (state === ConnectionState.ERROR || state === ConnectionState.DISCONNECTED) {
-                    // 连接异常时禁用输入，但只在当前会话需要实时通信时
-                    if (currentSession.value?.isActive && !currentSession.value?.completed) {
-                        chatInputEnabled.value = false
-                    }
-                    aiProcessingStatus.value = '连接已断开'
                 }
             },
 
-            // AI响应处理
+            // AI响应处理器 - 修复版
             onAIResponse: (message: AIResponseMessage) => {
-                console.log('🤖 收到AI响应:', message.message.substring(0, 50) + '...')
+                console.log('📨 处理AI回复消息:', message)
+
                 if (message.sessionId !== currentSessionId.value) {
-                    console.warn('收到非当前会话消息，忽略。')
+                    console.warn('收到非当前会话AI回复，忽略。收到:', message.sessionId, '当前:', currentSessionId.value)
                     return
                 }
 
@@ -131,27 +91,40 @@ export const useChatStore = defineStore('chat', () => {
                     id: Date.now(),
                     sessionId: message.sessionId,
                     type: 'AI' as MessageType,
-                    text: message.message,
+                    text: message.message, // 注意：后端发送的是 message 字段
                     createdAt: new Date().toISOString()
                 }
-                messages.value.push(aiMessage)
 
-                // 更新UI状态
-                chatInputEnabled.value = message.chatInputEnabled
-                sessionState.value = message.currentState
+                messages.value.push(aiMessage)
+                console.log('✅ AI消息已添加到列表:', aiMessage.text.substring(0, 50) + '...')
+
+                // 更新会话状态
+                if (message.currentState) {
+                    sessionState.value = message.currentState
+                    console.log('📊 会话状态已更新:', message.currentState)
+                }
+
+                // 更新输入状态
+                if (message.chatInputEnabled !== undefined) {
+                    chatInputEnabled.value = message.chatInputEnabled
+                    console.log('🎛️ 聊天输入状态已更新:', message.chatInputEnabled)
+                }
+
+                // 重置处理状态
                 aiProcessingStatus.value = ''
                 sending.value = false
 
-                // 检查会话是否完成
+                // 检查会话是否结束
                 if (message.currentState === SessionState.INTERVIEW_COMPLETED ||
                     message.currentState === SessionState.SESSION_ENDED) {
                     updateSessionAsCompleted()
                 }
             },
 
-            // 会话状态更新
+            // 会话状态更新处理器
             onSessionStateUpdate: (message: SessionStateUpdateMessage) => {
-                console.log('📊 会话状态更新:', message.currentState)
+                console.log('📊 处理会话状态更新:', message)
+
                 if (message.sessionId !== currentSessionId.value) {
                     console.warn('收到非当前会话状态更新，忽略。')
                     return
@@ -159,6 +132,11 @@ export const useChatStore = defineStore('chat', () => {
 
                 sessionState.value = message.currentState
                 chatInputEnabled.value = message.chatInputEnabled
+
+                console.log('✅ 会话状态已更新:', {
+                    state: message.currentState,
+                    inputEnabled: message.chatInputEnabled
+                })
 
                 if (message.currentState === SessionState.INTERVIEW_COMPLETED ||
                     message.currentState === SessionState.SESSION_ENDED) {
@@ -174,7 +152,7 @@ export const useChatStore = defineStore('chat', () => {
                     return
                 }
 
-                aiProcessingStatus.value = message.progress
+                aiProcessingStatus.value = message.progress || message.status || ''
                 sessionState.value = SessionState.AI_PROCESSING
                 chatInputEnabled.value = false
             },
@@ -187,16 +165,63 @@ export const useChatStore = defineStore('chat', () => {
                 sending.value = false
                 chatInputEnabled.value = true
             }
-        })
+        }
 
-        // 注册通用处理器，将所有消息先存入缓冲区
+        console.log('📝 设置事件处理器:', Object.keys(handlers))
+        webSocketManager.setEventHandlers(handlers)
+
+        // 直接赋值确保处理器被设置（备用方案）
+        webSocketManager.eventHandlers = { ...webSocketManager.eventHandlers, ...handlers }
+
+        // 验证处理器设置 - 立即检查
+        console.log('🔍 立即验证处理器:', !!webSocketManager.eventHandlers.onAIResponse)
+
+        // 延迟验证处理器设置
+        setTimeout(() => {
+            console.log('🔍 延迟验证处理器:', !!webSocketManager.eventHandlers.onAIResponse)
+            console.log('🔍 所有处理器:', Object.keys(webSocketManager.eventHandlers))
+        }, 100)
+
+        // 注册通用消息处理器
         webSocketManager.onMessage((message: WSMessage) => {
-            if (webSocketManager.getConnectionState() !== ConnectionState.CONNECTED) {
-                // 如果处理器未就绪，将消息存入缓冲区
+            console.log('📬 收到WebSocket消息:', message.type, message)
+
+            // 检查连接状态，如果未就绪则缓存消息
+            if (wsConnectionState.value !== ConnectionState.CONNECTED) {
+                console.warn('⚠️ WebSocket连接状态不是CONNECTED，消息存入缓冲区:', message.type)
                 messageBuffer.value.push(message)
-                console.warn('⚠️ WebSocket处理器未就绪，消息已存入缓冲区:', message.type)
+                return
+            }
+
+            // 立即处理消息
+            try {
+                switch (message.type) {
+                    case WSMessageType.AI_RESPONSE:
+                        console.log('🔄 立即处理AI响应消息')
+                        webSocketManager.eventHandlers.onAIResponse?.(message as AIResponseMessage)
+                        break
+                    case WSMessageType.SESSION_STATE_UPDATE:
+                        console.log('🔄 立即处理会话状态更新')
+                        webSocketManager.eventHandlers.onSessionStateUpdate?.(message as SessionStateUpdateMessage)
+                        break
+                    case WSMessageType.AI_PROCESSING_STATUS:
+                        console.log('🔄 立即处理AI处理状态')
+                        webSocketManager.eventHandlers.onAIProcessingStatus?.(message as AIProcessingStatusMessage)
+                        break
+                    case WSMessageType.ERROR:
+                        console.log('🔄 立即处理错误消息')
+                        webSocketManager.eventHandlers.onError?.(message as ErrorMessage)
+                        break
+                    default:
+                        console.log('ℹ️ 未处理的消息类型:', message.type)
+                        break
+                }
+            } catch (error) {
+                console.error('❌ 消息处理失败:', error, message)
             }
         })
+
+        console.log('✅ WebSocket消息处理器设置完成')
     }
 
     // 新增：处理消息缓冲区的方法
@@ -228,7 +253,6 @@ export const useChatStore = defineStore('chat', () => {
         }
     }
 
-
     // ===== 会话状态管理 =====
     const updateSessionAsCompleted = () => {
         if (currentSession.value) {
@@ -258,25 +282,42 @@ export const useChatStore = defineStore('chat', () => {
         const token = localStorage.getItem('token')
         if (!token) {
             console.error('❌ 无法建立WebSocket连接：缺少认证token')
+            wsConnectionState.value = ConnectionState.ERROR
             return false
         }
 
         try {
             console.log('🔌 准备建立WebSocket连接...')
+
+            // 立即设置连接中状态
+            wsConnectionState.value = ConnectionState.CONNECTING
+
             const success = await webSocketManager.connect(sessionId, token)
 
             if (success) {
                 console.log('✅ WebSocket连接建立成功')
+
+                // 重要：连接成功后立即设置处理器！！！
+                setupWebSocketHandlers()
+
+                // 显式设置连接状态（确保同步）
+                wsConnectionState.value = ConnectionState.CONNECTED
+
                 // 重置相关状态
                 aiProcessingStatus.value = ''
                 chatInputEnabled.value = true
+
                 // 立即处理可能在连接中到达的消息
                 processMessageBuffer()
+            } else {
+                console.log('❌ WebSocket连接失败')
+                wsConnectionState.value = ConnectionState.ERROR
             }
 
             return success
         } catch (error) {
-            console.error('❌ WebSocket连接失败:', error)
+            console.error('❌ WebSocket连接异常:', error)
+            wsConnectionState.value = ConnectionState.ERROR
             return false
         }
     }
@@ -354,75 +395,68 @@ export const useChatStore = defineStore('chat', () => {
         }
 
         // 重置状态
-        sessionState.value = session.completed ? SessionState.SESSION_ENDED : SessionState.WAITING_FOR_USER_ANSWER
-        chatInputEnabled.value = !session.completed
+        sessionState.value = session.completed ? SessionState.INTERVIEW_COMPLETED : null
         aiProcessingStatus.value = ''
+        error.value = null
     }
 
-    // ===== 增强的会话创建（异步模式）=====
+    // ===== 增强的会话创建（异步版）=====
     const createSession = async (request: StartInterviewRequest): Promise<Session | null> => {
-        console.group('🚀 创建异步会话开始')
-        console.log('📋 请求参数:', JSON.stringify(request, null, 2))
-
         loading.value = true
         error.value = null
 
         try {
-            // 1. 创建会话（立即返回）
+            console.log('🚀 创建异步会话开始')
+            console.log('📋 请求参数:', request)
+
+            // 1. 创建会话
             console.log('📡 发送会话创建请求')
             const response = await chatAPI.createSession(request)
 
-            let sessionDTO = response.data.session || response.data
-            const newSession = convertSessionDTOToSession(sessionDTO)
+            if (response.data.success && response.data.session) {
+                const newSession = convertSessionDTOToSession(response.data.session)
+                console.log('✅ 会话创建成功，ID:', newSession.id)
 
-            // 2. 添加到会话列表
-            sessions.value.unshift(newSession)
-            currentSession.value = newSession
-            messages.value = []
+                // 2. 添加到会话列表
+                sessions.value.unshift(newSession)
 
-            console.log('✅ 会话创建成功，ID:', newSession.id)
+                // 3. 设置为当前会话并建立WebSocket连接
+                currentSession.value = newSession
+                messages.value = []
 
-            // 3. 建立WebSocket连接
-            const connected = await connectWebSocket(newSession.id)
+                console.log('🔌 准备建立WebSocket连接...')
+                const connected = await connectWebSocket(newSession.id)
 
-            if (connected) {
-                console.log('🔌 WebSocket连接已建立，等待AI开场题目...')
-                // 设置为AI处理状态，等待后端异步生成开场题目
-                sessionState.value = SessionState.AI_PROCESSING
-                chatInputEnabled.value = false
-                aiProcessingStatus.value = 'AI正在准备开场题目...'
+                if (connected) {
+                    console.log('✅ WebSocket连接建立成功')
+                    console.log('🔌 WebSocket连接已建立，等待AI开场题目...')
+                } else {
+                    console.warn('⚠️ WebSocket连接失败，但会话已创建')
+                }
+
+                return newSession
+
             } else {
-                console.warn('⚠️ WebSocket连接失败，回退到同步模式')
-                // 回退：直接获取消息
-                await fetchMessages(newSession.id)
-                sessionState.value = SessionState.WAITING_FOR_USER_ANSWER
-                chatInputEnabled.value = true
+                throw new Error(response.data.message || '创建会话失败')
             }
-
-            console.groupEnd()
-            return newSession
 
         } catch (err: any) {
             console.error('❌ 创建会话失败:', err)
             error.value = err.response?.data?.message || '创建会话失败'
-            loading.value = false
-            console.groupEnd()
             return null
         } finally {
             loading.value = false
         }
     }
 
-    // ===== 增强的消息发送（异步模式）=====
+    // ===== 增强的消息发送（异步版）=====
     const sendMessage = async (text: string) => {
         if (!currentSession.value) {
-            error.value = '没有活动会话'
-            return
+            throw new Error('没有活动会话')
         }
 
-        if (!canSendMessage.value) {
-            console.warn('⚠️ 当前状态不允许发送消息')
-            return
+        if (!text.trim()) {
+            throw new Error('消息内容不能为空')
         }
 
         const sessionId = currentSession.value.id
@@ -430,7 +464,7 @@ export const useChatStore = defineStore('chat', () => {
         error.value = null
 
         try {
-            console.log('📤 发送用户消息:', text.substring(0, 30) + '...')
+            console.log('📤 发送用户消息:', text.substring(0, 50) + '...')
 
             // 1. 立即添加用户消息到本地
             const userMessage: Message = {
@@ -520,6 +554,37 @@ export const useChatStore = defineStore('chat', () => {
         }
     }
 
+    // ===== 辅助方法 =====
+    const generateTitle = (mode: SessionMode, tagName?: string): string => {
+        const timestamp = new Date().toLocaleString('zh-CN', {
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        })
+
+        const modeText = mode === SessionMode.SINGLE_TOPIC ? '单主题' : '综合'
+        const topicText = tagName ? `${tagName}` : '面试'
+
+        return `${modeText}${topicText} ${timestamp}`
+    }
+
+    const convertSessionDTOToSession = (sessionDTO: any): Session => {
+        return {
+            id: sessionDTO.id,
+            title: sessionDTO.title || generateTitle(sessionDTO.mode),
+            mode: sessionDTO.mode,
+            expectedQuestionCount: sessionDTO.expectedQuestionCount || 5,
+            askedQuestionCount: sessionDTO.askedQuestionCount || 0,
+            completedQuestionCount: sessionDTO.completedQuestionCount || 0,
+            startedAt: sessionDTO.startedAt,
+            endedAt: sessionDTO.endedAt,
+            isActive: sessionDTO.isActive !== false,
+            completed: sessionDTO.completed || sessionDTO.endedAt != null,
+            createdAt: sessionDTO.startedAt || sessionDTO.createdAt || new Date().toISOString()
+        }
+    }
+
     // ===== 清理方法 =====
     const cleanup = () => {
         disconnectWebSocket()
@@ -533,7 +598,7 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     // ===== 初始化WebSocket处理器 =====
-    setupWebSocketHandlers()
+    // 注意：这里不直接调用setupWebSocketHandlers，而是在connectWebSocket时调用
 
     // ===== 返回store接口 =====
     return {
