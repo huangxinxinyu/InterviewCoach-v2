@@ -86,12 +86,24 @@ export const useChatStore = defineStore('chat', () => {
                     return
                 }
 
+                // 检查是否已存在相同内容的AI消息（防重复）
+                const isDuplicate = messages.value.some(msg =>
+                    msg.type === 'AI' &&
+                    msg.text === message.message &&
+                    Math.abs(new Date(msg.createdAt).getTime() - Date.now()) < 1000 // 5秒内的相同消息视为重复
+                )
+
+                if (isDuplicate) {
+                    console.warn('🚫 检测到重复AI消息，跳过:', message.message?.substring(0, 50))
+                    return
+                }
+
                 // 添加AI消息到消息列表
                 const aiMessage: Message = {
                     id: Date.now(),
                     sessionId: message.sessionId,
                     type: 'AI' as MessageType,
-                    text: message.message, // 注意：后端发送的是 message 字段
+                    text: message.message,
                     createdAt: new Date().toISOString()
                 }
 
