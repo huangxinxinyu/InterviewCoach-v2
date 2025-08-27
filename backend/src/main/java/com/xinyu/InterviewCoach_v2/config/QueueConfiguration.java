@@ -1,4 +1,3 @@
-// QueueConfiguration.java - 消息队列配置类
 package com.xinyu.InterviewCoach_v2.config;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -9,7 +8,6 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
-import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadPoolExecutor;
 
 /**
@@ -68,7 +66,6 @@ public class QueueConfiguration {
     public Executor taskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
 
-        // 通用任务处理配置
         executor.setCorePoolSize(2);
         executor.setMaxPoolSize(5);
         executor.setQueueCapacity(25);
@@ -100,6 +97,33 @@ public class QueueConfiguration {
         executor.setQueueCapacity(10);
         executor.setThreadNamePrefix("scheduled-");
         executor.setKeepAliveSeconds(120);
+
+        executor.initialize();
+
+        return executor;
+    }
+
+    /**
+     * 新增：WebSocket响应生产者线程池（修复缺失的线程池）
+     * 用于处理WebSocket消息推送到队列的异步任务
+     */
+    @Bean("websocketProducerExecutor")
+    public Executor websocketProducerExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+
+        // 轻量级配置：WebSocket消息推送到队列是轻量操作
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(3);
+        executor.setQueueCapacity(15);
+        executor.setThreadNamePrefix("ws-producer-");
+        executor.setKeepAliveSeconds(60);
+        executor.setAllowCoreThreadTimeOut(true);
+
+        // 拒绝策略：调用者线程执行，确保消息不丢失
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(10);
 
         executor.initialize();
 

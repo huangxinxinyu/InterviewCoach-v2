@@ -1,6 +1,7 @@
 package com.xinyu.InterviewCoach_v2.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.xinyu.InterviewCoach_v2.service.WebSocketService;
 import com.xinyu.InterviewCoach_v2.util.JwtUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +24,10 @@ public class ChatWebSocketHandler implements WebSocketHandler {
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    // 新增：注入WebSocketService来统一管理连接
+    @Autowired
+    private WebSocketService webSocketService;
 
     // 存储会话连接: sessionId -> WebSocketSession
     private final Map<Long, WebSocketSession> sessionConnections = new ConcurrentHashMap<>();
@@ -55,9 +60,12 @@ public class ChatWebSocketHandler implements WebSocketHandler {
             Long userId = jwtUtil.getUserIdFromToken(token);
             Long sessionId = Long.parseLong(sessionIdStr);
 
-            // 存储连接
+            // 本地存储连接（保持兼容性）
             sessionConnections.put(sessionId, session);
             userConnections.put(userId, session);
+
+            // 关键修复：注册到WebSocketService进行统一管理
+            webSocketService.registerConnection(sessionId, userId, session);
 
             // 在session中存储元数据
             session.getAttributes().put("userId", userId);
@@ -113,11 +121,17 @@ public class ChatWebSocketHandler implements WebSocketHandler {
         Long userId = (Long) session.getAttributes().get("userId");
         Long sessionId = (Long) session.getAttributes().get("sessionId");
 
+        // 本地清理连接（保持兼容性）
         if (sessionId != null) {
             sessionConnections.remove(sessionId);
         }
         if (userId != null) {
             userConnections.remove(userId);
+        }
+
+        // 关键修复：同时从WebSocketService中移除连接
+        if (sessionId != null && userId != null) {
+            webSocketService.removeConnection(sessionId, userId, session.getId());
         }
 
         logger.info("WebSocket连接关闭: userId={}, sessionId={}, reason={}",
@@ -130,7 +144,7 @@ public class ChatWebSocketHandler implements WebSocketHandler {
     }
 
     /**
-     * 推送AI回复到指定会话
+     * 推送AI回复到指定会话（保持兼容性，但建议使用WebSocketService）
      */
     public void pushAIResponse(Long sessionId, String aiResponse, String currentState) {
         WebSocketSession wsSession = sessionConnections.get(sessionId);
@@ -157,7 +171,7 @@ public class ChatWebSocketHandler implements WebSocketHandler {
     }
 
     /**
-     * 推送会话状态更新
+     * 推送会话状态更新（保持兼容性，但建议使用WebSocketService）
      */
     public void pushSessionStateUpdate(Long sessionId, String state, boolean chatEnabled) {
         WebSocketSession wsSession = sessionConnections.get(sessionId);

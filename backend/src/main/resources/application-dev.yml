@@ -113,7 +113,7 @@ queue:
     # Redis Stream配置
     streams:
       requests: "ai:requests"             # AI请求流
-      responses: "ai:responses"           # AI响应流（暂不使用）
+      responses: "ai:responses"           # AI响应流（新增WebSocket推送队列）
 
     # 消费者配置
     consumer:
@@ -122,6 +122,16 @@ queue:
       max-messages: 10                    # 每次最多拉取10条消息
       block-timeout: 2000                 # 阻塞等待2秒
       auto-ack: false                     # 手动确认，保证消息不丢失
+
+    # WebSocket响应消费者配置（新增）
+    websocket:
+      enabled: true                       # WebSocket响应队列开关
+      consumer:
+        group-name: "websocket-response-group"
+        consumer-name: "ws-consumer-${server.port:8080}-${spring.application.name:app}"
+        max-messages: 15                  # WebSocket推送更频繁，增加批次大小
+        block-timeout: 1000               # 更短的等待时间，提升响应速度
+        auto-ack: false                   # 手动确认，保证消息不丢失
 
     # 处理器配置
     processors:
@@ -145,6 +155,22 @@ queue:
         enabled: true
         priority: "low"                   # 最终评价低优先级
 
+      # 新增：WebSocket响应Topic配置
+      websocket-responses:
+        enabled: true                     # WebSocket响应队列总开关
+        ai-response:
+          enabled: true
+          priority: "high"                # AI回复高优先级
+        processing-status:
+          enabled: true
+          priority: "medium"              # 处理状态中优先级
+        session-state:
+          enabled: true
+          priority: "medium"              # 会话状态中优先级
+        user-notification:
+          enabled: true
+          priority: "low"                 # 用户通知低优先级
+
 # WebSocket配置
 websocket:
   chat:
@@ -153,10 +179,14 @@ websocket:
     max-text-message-size: 10240          # 最大消息大小10KB
     max-binary-message-size: 0            # 不支持二进制消息
 
-# 日志配置
-logging:
-  level:
-    com.xinyu.InterviewCoach_v2.queue: DEBUG
-    com.xinyu.InterviewCoach_v2.websocket: DEBUG
-    com.xinyu.InterviewCoach_v2.service.ChatService: INFO
-    com.xinyu.InterviewCoach_v2.service.cache: DEBUG
+    # 新增：响应队列配置
+    response-queue:
+      enabled: true                       # 响应队列开关
+      poll-interval:
+        high-priority: 200                # 高优先级轮询间隔200ms
+        medium-priority: 500              # 中优先级轮询间隔500ms
+        low-priority: 1000                # 低优先级轮询间隔1000ms
+      batch-size:
+        high-priority: 5                  # 高优先级批次大小
+        medium-priority: 8                # 中优先级批次大小
+        low-priority: 10                  # 低优先级批次大小
