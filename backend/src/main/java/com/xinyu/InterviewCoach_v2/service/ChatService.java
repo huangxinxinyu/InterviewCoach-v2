@@ -343,7 +343,7 @@ public class ChatService {
 
         Integer expectedQuestionCount = request.getExpectedQuestionCount();
         if (expectedQuestionCount == null || expectedQuestionCount <= 0) {
-            expectedQuestionCount = 3; // 默认3题
+            expectedQuestionCount = 5; // 默认5题
         }
 
         List<Long> selectedQuestionIds = new ArrayList<>();

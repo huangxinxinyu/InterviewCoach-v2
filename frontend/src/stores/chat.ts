@@ -90,7 +90,7 @@ export const useChatStore = defineStore('chat', () => {
                 const isDuplicate = messages.value.some(msg =>
                     msg.type === 'AI' &&
                     msg.text === message.message &&
-                    Math.abs(new Date(msg.createdAt).getTime() - Date.now()) < 1000 // 5秒内的相同消息视为重复
+                    Math.abs(new Date(msg.createdAt).getTime() - Date.now()) < 1000 //
                 )
 
                 if (isDuplicate) {
