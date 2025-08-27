@@ -13,6 +13,7 @@ import com.xinyu.InterviewCoach_v2.entity.Question;
 import com.xinyu.InterviewCoach_v2.enums.InterviewState;
 import com.xinyu.InterviewCoach_v2.enums.MessageType;
 import com.xinyu.InterviewCoach_v2.mapper.*;
+import com.xinyu.InterviewCoach_v2.queue.producer.AIQueueProducer;
 import com.xinyu.InterviewCoach_v2.service.cache.AIResponseCacheManager;
 import com.xinyu.InterviewCoach_v2.util.DTOConverter;
 import org.slf4j.Logger;
@@ -71,6 +72,12 @@ public class ChatService {
     @Autowired
     private AIResponseCacheManager aiCacheManager;
 
+    @Autowired
+    private AIQueueProducer aiQueueProducer;
+
+    @Autowired
+    private WebSocketService webSocketService;
+
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${openai.api.key}")
@@ -83,7 +90,8 @@ public class ChatService {
     private String openAiModel;
 
     /**
-     * 启动新的面试会话
+     * 启动新的面试会话 - 异步版本
+     * 创建会话和题目队列后立即返回，开场题目异步生成
      */
     @Transactional
     public InterviewSessionResponseDTO startInterview(Long userId, StartInterviewRequestDTO request) {
@@ -115,7 +123,7 @@ public class ChatService {
             // 4. 初始化题目队列到数据库
             sessionService.initializeQuestionQueue(session.getId(), questionIds);
 
-            // 5. 获取第一个题目并生成开场
+            // 5. 获取第一个题目
             Question firstQuestion = sessionService.getCurrentQuestion(session.getId());
             if (firstQuestion == null) {
                 return InterviewSessionResponseDTO.builder()
@@ -123,21 +131,21 @@ public class ChatService {
                         .message("无法获取第一个题目");
             }
 
-            // 6. 生成开场消息
-            String openingMessage = generateOpeningMessage(firstQuestion);
-            MessageDTO aiMessage = saveAIMessage(session.getId(), openingMessage);
+            // 6. 异步生成开场消息，立即返回会话
+            aiQueueProducer.sendOpeningQuestionRequest(session.getId(), firstQuestion.getId());
 
-            // 7. 移动到下一题准备
+            // 7. 移动到下一题准备（为后续用户回答做准备）
             sessionService.moveToNextQuestion(session.getId());
 
-            logger.info("面试会话启动成功: sessionId={}, firstQuestionId={}",
+            logger.info("面试会话启动成功（异步）: sessionId={}, firstQuestionId={}",
                     session.getId(), firstQuestion.getId());
 
+            // 8. 立即返回会话信息，开场消息将通过WebSocket异步推送
             return InterviewSessionResponseDTO.builder()
                     .success(true)
                     .session(session)
-                    .currentState(InterviewState.WAITING_FOR_USER_ANSWER)
-                    .chatInputEnabled(true);
+                    .currentState(InterviewState.AI_ANALYZING) // 等待AI生成开场
+                    .chatInputEnabled(false); // 暂时禁用输入，等开场完成
 
         } catch (Exception e) {
             logger.error("启动面试会话失败: userId=" + userId, e);
@@ -148,12 +156,13 @@ public class ChatService {
     }
 
     /**
-     * 处理用户消息
+     * 处理用户消息 - 异步版本
+     * 立即保存用户消息并返回，AI处理通过队列异步进行
      */
     @Transactional
     public ChatMessageResponseDTO processMessage(Long userId, Long sessionId, SendMessageRequestDTO request) {
         try {
-            logger.debug("处理用户消息: sessionId={}, messageLength={}",
+            logger.debug("开始异步处理用户消息: sessionId={}, messageLength={}",
                     sessionId, request.getText().length());
 
             // 1. 验证会话
@@ -165,56 +174,47 @@ public class ChatService {
 
             // 2. 保存用户消息
             MessageDTO userMessage = saveUserMessage(sessionId, request.getText());
+            logger.debug("用户消息已保存: messageId={}", userMessage.getId());
 
-            // 3. 获取上一题ID用于生成反馈
+            // 3. 立即通过WebSocket通知前端AI开始处理
+            webSocketService.pushAIProcessingStatus(sessionId, "processing", "AI正在分析您的回答...");
+
+            // 4. 获取上一题ID用于生成反馈（复用现有逻辑）
             Long previousQuestionId = sessionService.getPreviousQuestionId(sessionId);
             logger.debug("上一题ID: {}", previousQuestionId);
 
-            // 4. 检查是否还有更多题目
+            // 5. 检查是否还有更多题目（复用现有逻辑）
             boolean hasMoreQuestions = sessionService.hasMoreQuestions(sessionId);
             logger.debug("还有更多题目: {}", hasMoreQuestions);
 
-            String aiResponse;
-            InterviewState currentState;
-            boolean chatEnabled = true;
-
+            // 6. 发送异步AI处理请求到队列
             if (hasMoreQuestions) {
-                // 还有题目，生成反馈并问下一题
+                // 有下一题，发送反馈+下一题请求
                 Question nextQuestion = sessionService.getCurrentQuestion(sessionId);
-                aiResponse = generateFeedbackWithNextQuestion(
-                        request.getText(), previousQuestionId, nextQuestion);
-                currentState = InterviewState.WAITING_FOR_USER_ANSWER;
-
-                // 移动到下一题
-                sessionService.moveToNextQuestion(sessionId);
-                System.out.println("question position ++");
-                // 增加完成题目计数
-                sessionService.incrementCompletedQuestionCount(sessionId);
-
-                logger.debug("生成中间反馈和下一题: nextQuestionId={}",
+                aiQueueProducer.sendFeedbackWithNextQuestionRequest(
+                        sessionId, previousQuestionId, request.getText(),
                         nextQuestion != null ? nextQuestion.getId() : null);
-
             } else {
-                // 没有更多题目，生成最终反馈
-                aiResponse = generateFinalFeedback(sessionId, request.getText(), previousQuestionId);
-                currentState = InterviewState.SESSION_ENDED;
-                chatEnabled = false;
-
-                // 结束会话
-                sessionService.endSession(sessionId);
-                logger.info("面试会话结束: sessionId={}", sessionId);
+                // 没有下一题，发送最终评价请求
+                aiQueueProducer.sendFinalEvaluationRequest(sessionId, request.getText());
             }
 
-            MessageDTO aiMessage = saveAIMessage(sessionId, aiResponse);
+            logger.info("异步AI处理请求已发送: sessionId={}, previousQuestionId={}, hasNext={}",
+                    sessionId, previousQuestionId, hasMoreQuestions);
 
+            // 7. 立即返回成功响应，使用现有的AI_ANALYZING状态
             return ChatMessageResponseDTO.builder()
                     .success(true)
-                    .aiMessage(aiMessage)
-                    .currentState(currentState)
-                    .chatInputEnabled(chatEnabled);
+                    .message("消息已接收，AI正在处理中...")
+                    .currentState(InterviewState.AI_ANALYZING) // 使用现有状态
+                    .chatInputEnabled(false); // 禁用输入直到AI回复
 
         } catch (Exception e) {
-            logger.error("处理消息失败: sessionId=" + sessionId, e);
+            logger.error("异步处理用户消息失败: sessionId=" + sessionId, e);
+
+            // 处理失败时通知WebSocket
+            webSocketService.pushAIProcessingStatus(sessionId, "error", "处理失败，请重试");
+
             return ChatMessageResponseDTO.builder()
                     .success(false)
                     .message("处理消息失败: " + e.getMessage());
@@ -434,7 +434,7 @@ public class ChatService {
     /**
      * 生成开场消息
      */
-    private String generateOpeningMessage(Question firstQuestion) {
+    public String generateOpeningMessage(Question firstQuestion) {
 
         String prompt = "你好！你是一位专业的技术面试官，现在正在直接与候选人对话。请以第一人称，将以下问题直接提问给候选人。不要回答问题本身，也不要提供任何指导建议或额外信息，直接提问即可。\n\n" +
                 firstQuestion.getText();
@@ -445,7 +445,7 @@ public class ChatService {
     /**
      * 生成反馈并提出下一题
      */
-    private String generateFeedbackWithNextQuestion(String userAnswer, Long previousQuestionId, Question nextQuestion) {
+    public String generateFeedbackWithNextQuestion(String userAnswer, Long previousQuestionId, Question nextQuestion) {
         if (nextQuestion == null) {
             return "系统错误：无法获取下一个问题。";
         }
@@ -545,7 +545,7 @@ public class ChatService {
     /**
      * 生成最终反馈
      */
-    private String generateFinalFeedback(Long sessionId, String lastAnswer, Long lastQuestionId) {
+    public String generateFinalFeedback(Long sessionId, String lastAnswer, Long lastQuestionId) {
         StringBuilder prompt = new StringBuilder();
 
         prompt.append("用户刚刚完成了最后一个面试问题的回答。请你作为面试官：\n\n");
@@ -624,7 +624,7 @@ public class ChatService {
     /**
      * 保存AI消息
      */
-    private MessageDTO saveAIMessage(Long sessionId, String text) {
+    public MessageDTO saveAIMessage(Long sessionId, String text) {
         Message message = new Message(sessionId, MessageType.AI, text);
         messageMapper.insert(message);
         return dtoConverter.convertToMessageDTO(message);
