@@ -8,3 +8,5 @@ backend/crawler
 
 frontend/.vscode
 frontend/node_modules
+
+logs/

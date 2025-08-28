@@ -1,11 +1,4 @@
-server:
-  port: 8080
-
 spring:
-  application:
-    name: InterviewCoach-v2
-
-  # 数据库配置
   datasource:
     url: jdbc:mysql://localhost:3306/interviewcoach-v2?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=UTF-8
     username: ${DB_USERNAME:root}
@@ -20,17 +13,7 @@ spring:
       pool-name: HikariCP-InterviewCoach
       connection-test-query: SELECT 1
 
-  # JPA配置
-  jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.MySQL8Dialect
-        format_sql: true
-
-  # 邮件配置
+  # 邮件配置（保持不变）
   mail:
     host: smtp.gmail.com
     port: 587
@@ -45,23 +28,23 @@ spring:
           ssl:
             trust: smtp.gmail.com
 
-  # Redis配置 - 修复线程池和连接池问题
+  # Redis配置（保持不变，但调优）
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
       database: 0
-      timeout: 5000ms                     # 增加到5秒，适应队列操作
+      timeout: 3000ms                     # 增加超时时间，适应队列操作
       lettuce:
         pool:
-          max-active: 20                  # 修复：减少到合理值
-          max-wait: 3000ms                # 修复：设置等待时间
-          max-idle: 10                    # 修复：合理的空闲连接数
-          min-idle: 2                     # 修复：最小空闲连接
+          max-active: 200
+          max-wait: -1ms
+          max-idle: 20                    # 增加空闲连接，适应队列需求
+          min-idle: 5
         cluster:
           refresh:
-            adaptive: true
+            adaptive: true                # 支持集群动态刷新
             period: 30000ms
 
 # MyBatis配置
@@ -81,15 +64,15 @@ openai:
   api:
     key: ${OPENAI_API_KEY}
     url: ${OPENAI_API_URL:https://api.openai.com/v1/chat/completions}
-    timeout: 30000
-    max-retries: 2
-    retry-delay-ms: 1000
+    timeout: 30000                        # API超时30秒
+    max-retries: 2                        # 最大重试2次
+    retry-delay-ms: 1000                  # 重试延迟1秒
   model: ${OPENAI_MODEL:gpt-3.5-turbo}
   embedding:
     url: ${OPENAI_EMBEDDING_URL:https://api.openai.com/v1/embeddings}
     model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
-    batch-size: 20
-    timeout: 25000
+    batch-size: 20                        # 批量处理大小
+    timeout: 25000                        # embedding API超时25秒
 
 # 面试配置
 interview:
@@ -114,135 +97,66 @@ cache:
     enabled: true
     prefix: "ai:"
     first-question:
-      ttl: 604800
+      ttl: 604800                         # 第一题缓存7天
     feedback:
-      ttl: 259200
-    similarity-threshold: 0.85
+      ttl: 259200                         # 反馈缓存3天
+    similarity-threshold: 0.85            # 中文语义相似度阈值
     embedding:
       enabled: true
-      ttl: 86400
+      ttl: 86400                          # embedding缓存1天
     max-similar-answers: 10
 
-# 队列配置 - 修复核心问题
 queue:
   ai:
-    enabled: ${AI_QUEUE_ENABLED:true}
+    enabled: ${AI_QUEUE_ENABLED:true}     # 环境变量控制，默认启用
 
     # Redis Stream配置
     streams:
-      requests: "ai:requests"
-      responses: "ai:responses"
+      requests: "ai:requests"             # AI请求流
+      responses: "ai:responses"           # AI响应流（暂不使用）
 
-    # 消费者配置 - 修复
+    # 消费者配置
     consumer:
       group-name: "ai-service-group"
-      consumer-name: "ai-consumer-${server.port:8080}-${random.int(1000)}"  # 修复：添加随机数避免冲突
-      max-messages: 3                     # 修复：减少批次大小，避免资源争抢
-      block-timeout: 1000                 # 修复：减少阻塞时间
-      auto-ack: false
+      consumer-name: "ai-consumer-${server.port:8080}-${spring.application.name:app}"
+      max-messages: 10                    # 每次最多拉取10条消息
+      block-timeout: 2000                 # 阻塞等待2秒
+      auto-ack: false                     # 手动确认，保证消息不丢失
 
-    # WebSocket响应消费者配置
-    websocket:
-      enabled: true
-      consumer:
-        group-name: "websocket-response-group"
-        consumer-name: "ws-consumer-${server.port:8080}-${random.int(1000)}"  # 修复：添加随机数
-        max-messages: 5                   # 修复：减少批次大小
-        block-timeout: 500                # 修复：更短的等待时间
-        auto-ack: false
-
-    # 处理器配置 - 修复
+    # 处理器配置
     processors:
-      max-retries: 3
-      retry-delay-seconds: 5
-      max-processing-time-seconds: 120    # 修复：添加最大处理时间
+      thread-pool-size: 8                 # AI处理线程池大小
+      max-retries: 3                      # 失败最大重试次数
+      retry-delay-seconds: 5              # 重试延迟5秒
 
-    # Topic配置 - 修复和简化
+    # Topic启用配置
     topics:
       question-generation:
         enabled: true
-        priority: "high"
+        priority: "high"                  # 开场题目高优先级
       feedback-generation:
         enabled: true
-        priority: "high"
+        priority: "high"                  # 反馈生成高优先级
       embedding-calculation:
         enabled: true
-        priority: "medium"
-        batch-size: 10                    # 修复：减少批次大小
+        priority: "medium"                # embedding中优先级
+        batch-size: 20                    # 批处理大小
       final-evaluation:
         enabled: true
-        priority: "medium"                # 修复：改为中优先级
+        priority: "low"                   # 最终评价低优先级
 
-# WebSocket配置 - 修复
+# WebSocket配置
 websocket:
-  enabled: ${WEBSOCKET_ENABLED:true}
-  endpoint: "/ws"
-  allowed-origins: "*"
-  heartbeat-interval: 30000
-  max-text-message-size: 10240
-  max-binary-message-size: 0
+  chat:
+    enabled: ${WEBSOCKET_ENABLED:true}    # WebSocket开关
+    heartbeat-interval: 30000             # 心跳间隔30秒
+    max-text-message-size: 10240          # 最大消息大小10KB
+    max-binary-message-size: 0            # 不支持二进制消息
 
-  # 连接管理
-  connection:
-    max-sessions: 500                     # 修复：减少最大连接数
-    idle-timeout-seconds: 300
-
-# 日志配置 - 修复和优化
+# 日志配置
 logging:
   level:
-    com.xinyu.InterviewCoach_v2: INFO     # 修复：改为INFO减少日志量
-    com.xinyu.InterviewCoach_v2.queue: DEBUG  # 队列相关保持DEBUG便于调试
-    org.springframework.data.redis: WARN
-    org.hibernate.SQL: WARN
-    root: INFO
-
-  pattern:
-    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
-
-  file:
-    name: logs/interview-coach.log
-    max-size: 50MB                        # 修复：减少单文件大小
-    max-history: 10                       # 修复：减少保存天数
-    total-size-cap: 500MB                 # 修复：限制总大小
-
-# 监控配置
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics
-      base-path: /actuator
-  endpoint:
-    health:
-      show-details: when-authorized
-
-# 异步任务配置 - 修复线程池设置
-async:
-  core-pool-size: 3                       # 修复：减少核心线程数
-  max-pool-size: 8                        # 修复：减少最大线程数
-  queue-capacity: 50
-  thread-name-prefix: "async-"
-  keep-alive-seconds: 60
-
-# 性能优化配置
-performance:
-  connection-pool:
-    max-wait-millis: 3000                 # 连接池最大等待时间
-    validation-timeout: 2000              # 连接验证超时
-
-  thread-pool:
-    ai-processor:
-      core-size: 3                        # AI处理核心线程数
-      max-size: 8                         # AI处理最大线程数
-      queue-capacity: 100
-      keep-alive: 60
-    websocket-producer:
-      core-size: 2                        # WebSocket生产者线程数
-      max-size: 5
-      queue-capacity: 50
-      keep-alive: 30
-
-# 开发环境特定配置
-debug: false                              # 修复：关闭debug模式提升性能
-spring.output.ansi.enabled: detect       # 修复：自动检测ANSI支持
+    com.xinyu.InterviewCoach_v2.queue: DEBUG
+    com.xinyu.InterviewCoach_v2.websocket: DEBUG
+    com.xinyu.InterviewCoach_v2.service.ChatService: INFO
+    com.xinyu.InterviewCoach_v2.service.cache: DEBUG

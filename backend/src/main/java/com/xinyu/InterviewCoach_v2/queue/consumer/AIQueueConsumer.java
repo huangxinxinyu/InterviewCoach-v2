@@ -1,9 +1,9 @@
+// AIQueueConsumer.java - 修正版，使用现有ChatService方法
 package com.xinyu.InterviewCoach_v2.queue.consumer;
 
-import com.xinyu.InterviewCoach_v2.mapper.QuestionMapper;
 import com.xinyu.InterviewCoach_v2.queue.constants.AIQueueTopics;
-import com.xinyu.InterviewCoach_v2.queue.producer.WebSocketResponseProducer;
 import com.xinyu.InterviewCoach_v2.service.ChatService;
+import com.xinyu.InterviewCoach_v2.service.WebSocketService;
 import com.xinyu.InterviewCoach_v2.service.SessionService;
 import com.xinyu.InterviewCoach_v2.service.cache.AIResponseCacheManager;
 import com.xinyu.InterviewCoach_v2.config.properties.AIQueueProperties;
@@ -21,10 +21,10 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
+import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
 
 @Component
 public class AIQueueConsumer {
@@ -38,26 +38,19 @@ public class AIQueueConsumer {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private QuestionMapper questionMapper;
-
-    @Autowired
     private ChatService chatService;
 
     @Autowired
     private SessionService sessionService;
 
     @Autowired
-    private WebSocketResponseProducer webSocketResponseProducer;
+    private WebSocketService webSocketService;
 
     @Autowired
     private AIResponseCacheManager aiCacheManager;
 
     @Autowired
     private AIQueueProperties queueProperties;
-
-    // 修复：注入AI专用线程池
-    @Autowired
-    private Executor aiProcessorExecutor;
 
     @PostConstruct
     public void initialize() {
@@ -79,7 +72,7 @@ public class AIQueueConsumer {
     }
 
     /**
-     * 定时轮询AI请求队列 - 修复线程池使用
+     * 定时轮询AI请求队列 - 按优先级处理
      */
     @Scheduled(fixedDelay = 500)
     @Async("aiProcessorExecutor")
@@ -108,7 +101,6 @@ public class AIQueueConsumer {
         pollAIRequestsByPriority(AIQueueTopics.PRIORITY_LOW, 2);
     }
 
-    // 修复：改进消息处理逻辑，使用指定线程池
     private void pollAIRequestsByPriority(String priority, int maxCount) {
         try {
             String streamName = queueProperties.getStreams().getRequests();
@@ -130,14 +122,7 @@ public class AIQueueConsumer {
                     logger.debug("收到{}优先级AI消息: count={}", priority, filteredRecords.size());
 
                     for (MapRecord<String, Object, Object> record : filteredRecords) {
-                        CompletableFuture.runAsync(() -> {
-                            try {
-                                processAIMessage(record);
-                            } catch (Exception e) {
-                                logger.error("AI消息异步处理异常: recordId={}", record.getId(), e);
-                                handleProcessingError(record, e);
-                            }
-                        }, aiProcessorExecutor);
+                        CompletableFuture.runAsync(() -> processAIMessage(record));
                     }
                 }
             }
@@ -148,12 +133,11 @@ public class AIQueueConsumer {
     }
 
     /**
-     * 修复：改进AI消息处理，延迟确认机制
+     * 处理AI消息
      */
     private void processAIMessage(MapRecord<String, Object, Object> record) {
         String messageId = null;
         String topic = null;
-        boolean processSuccess = false;
 
         try {
             Map<Object, Object> data = record.getValue();
@@ -169,106 +153,69 @@ public class AIQueueConsumer {
 
             // 根据topic分发处理
             switch(topic) {
-                case AIQueueTopics.QUESTION_GENERATION -> {
-                    processQuestionGeneration(payload);
-                    processSuccess = true;
-                }
-                case AIQueueTopics.FEEDBACK_GENERATION -> {
-                    processFeedbackGeneration(payload);
-                    processSuccess = true;
-                }
-                case AIQueueTopics.EMBEDDING_CALCULATION -> {
-                    processEmbeddingCalculation(payload);
-                    processSuccess = true;
-                }
-                case AIQueueTopics.FINAL_EVALUATION -> {
-                    processFinalEvaluation(payload);
-                    processSuccess = true;
-                }
+                case AIQueueTopics.QUESTION_GENERATION -> processQuestionGeneration(payload);
+                case AIQueueTopics.FEEDBACK_GENERATION -> processFeedbackGeneration(payload);
+                case AIQueueTopics.EMBEDDING_CALCULATION -> processEmbeddingCalculation(payload);
+                case AIQueueTopics.FINAL_EVALUATION -> processFinalEvaluation(payload);
                 default -> {
                     logger.warn("未知的AI Topic: {}", topic);
-                    processSuccess = true; // 未知topic也要确认，避免重复处理
+                    return;
                 }
             }
 
-            // 修复：处理成功后才确认消息
-            if (processSuccess) {
-                acknowledgeMessage(record.getId());
+            // 确认消息处理完成
+            acknowledgeMessage(String.valueOf(record.getId()));
 
-                long duration = System.currentTimeMillis() - startTime;
-                logger.info("AI消息处理成功: topic={}, messageId={}, 耗时={}ms", topic, messageId, duration);
-            }
+            long duration = System.currentTimeMillis() - startTime;
+            logger.info("AI消息处理完成: topic={}, messageId={}, 耗时={}ms", topic, messageId, duration);
 
         } catch (Exception e) {
             logger.error("处理AI消息失败: topic={}, messageId={}", topic, messageId, e);
-
-            // 修复：失败时不立即确认，交给重试机制处理
             handleProcessingError(record, e);
         }
     }
 
     /**
-     * 处理开场题目生成 - 添加异常处理
+     * 处理开场题目生成 - 使用现有方法
      */
     private void processQuestionGeneration(Map<String, Object> payload) {
         Long sessionId = getLongValue(payload, "sessionId");
         Long questionId = getLongValue(payload, "questionId");
 
         try {
-            logger.debug("开始生成开场题目: sessionId={}, questionId={}", sessionId, questionId);
-
-            // 参数验证
-            if (sessionId == null || questionId == null) {
-                throw new IllegalArgumentException("缺少必要参数: sessionId或questionId为空");
-            }
-
-            // 发送处理状态到WebSocket响应队列
-            webSocketResponseProducer.sendProcessingStatusMessage(sessionId, "generating", "AI正在准备开场题目...");
-
             // 获取题目信息
             Question question = getQuestionById(questionId);
             if (question == null) {
                 logger.error("题目不存在: questionId={}", questionId);
-                webSocketResponseProducer.sendAIResponseMessage(sessionId, "抱歉，无法获取题目信息。", "ERROR");
-                webSocketResponseProducer.sendSessionStateMessage(sessionId, "ERROR", false);
+                webSocketService.pushAIResponse(sessionId, "抱歉，无法获取题目信息。", "ERROR");
                 return;
             }
 
-            // 使用现有的generateOpeningMessage方法
-            String aiResponse = chatService.generateOpeningMessage(question);
+            // 使用现有的generateOpeningMessage方法（通过反射调用私有方法）
+            String aiResponse = callPrivateMethod(chatService, "generateOpeningMessage",
+                    new Class[]{Question.class}, new Object[]{question});
 
-            if (aiResponse == null || aiResponse.trim().isEmpty()) {
-                // 降级处理：使用默认开场消息
+            if (aiResponse == null) {
                 aiResponse = "面试开始！请回答以下问题：\n\n" + question.getText();
-                logger.warn("AI生成开场失败，使用默认消息: sessionId={}", sessionId);
             }
 
-            // 使用现有的saveAIMessage方法保存消息
-            MessageDTO aiMessage = chatService.saveAIMessage(sessionId, aiResponse);
+            // 使用现有的saveAIMessage方法（通过反射调用私有方法）
+            MessageDTO aiMessage = callPrivateMethod(chatService, "saveAIMessage",
+                    new Class[]{Long.class, String.class}, new Object[]{sessionId, aiResponse});
 
-            // 发送AI响应到WebSocket响应队列
-            webSocketResponseProducer.sendAIResponseMessage(sessionId, aiResponse, "WAITING_FOR_USER_ANSWER");
+            // 通过WebSocket推送给前端
+            webSocketService.pushAIResponse(sessionId, aiResponse, "ASKING_QUESTION");
 
-            // 发送会话状态更新到WebSocket响应队列：启用输入框，用户可以开始回答
-            webSocketResponseProducer.sendSessionStateMessage(sessionId, "WAITING_FOR_USER_ANSWER", true);
-
-            logger.info("开场题目生成完成: sessionId={}, questionId={}, responseLength={}",
-                    sessionId, questionId, aiResponse.length());
+            logger.info("开场题目生成完成: sessionId={}, questionId={}", sessionId, questionId);
 
         } catch (Exception e) {
             logger.error("处理开场题目生成失败: sessionId={}", sessionId, e);
-
-            // 错误处理：发送错误消息到WebSocket响应队列
-            webSocketResponseProducer.sendAIResponseMessage(sessionId, "AI暂时无法生成题目，请稍后再试。", "ERROR");
-            webSocketResponseProducer.sendSessionStateMessage(sessionId, "WAITING_FOR_USER_ANSWER", true);
-
-            // 重新抛出异常，让上层处理重试逻辑
-            throw e;
+            webSocketService.pushAIResponse(sessionId, "AI暂时无法生成题目，请稍后再试。", "ERROR");
         }
     }
 
     /**
-     * 修复：处理反馈生成，加强异常处理
+     * 处理反馈生成 - 使用现有方法
      */
     private void processFeedbackGeneration(Map<String, Object> payload) {
         Long sessionId = getLongValue(payload, "sessionId");
@@ -277,229 +224,145 @@ public class AIQueueConsumer {
         Long nextQuestionId = getLongValue(payload, "nextQuestionId");
 
         try {
-            logger.debug("开始生成反馈: sessionId={}, currentQuestionId={}, hasNext={}",
-                    sessionId, currentQuestionId, nextQuestionId != null);
-
-            // 参数验证
-            if (sessionId == null || currentQuestionId == null) {
-                throw new IllegalArgumentException("缺少必要参数: sessionId或currentQuestionId为空");
-            }
-
             String aiResponse;
             String newState;
-            boolean chatEnabled;
-
-            // 发送处理开始状态到WebSocket响应队列
-            webSocketResponseProducer.sendProcessingStatusMessage(sessionId, "generating", "AI正在生成反馈...");
 
             if (nextQuestionId != null && nextQuestionId > 0) {
                 // 有下一题，生成反馈+下一题
                 Question nextQuestion = getQuestionById(nextQuestionId);
                 if (nextQuestion == null) {
                     logger.error("下一题不存在: questionId={}", nextQuestionId);
-                    webSocketResponseProducer.sendAIResponseMessage(sessionId, "抱歉，无法获取下一个问题。", "ERROR");
+                    webSocketService.pushAIResponse(sessionId, "抱歉，无法获取下一个问题。", "ERROR");
                     return;
                 }
 
                 // 使用现有的generateFeedbackWithNextQuestion方法
-                aiResponse = chatService.generateFeedbackWithNextQuestion(userAnswer, currentQuestionId, nextQuestion);
+                aiResponse = callPrivateMethod(chatService, "generateFeedbackWithNextQuestion",
+                        new Class[]{String.class, Long.class, Question.class},
+                        new Object[]{userAnswer, currentQuestionId, nextQuestion});
 
                 // 使用现有的SessionService方法更新状态
                 sessionService.moveToNextQuestion(sessionId);
+                sessionService.incrementCompletedQuestionCount(sessionId);
 
                 newState = "WAITING_FOR_USER_ANSWER";
-                chatEnabled = true;
-
-                logger.info("反馈+下一题生成完成: sessionId={}, nextQuestionId={}", sessionId, nextQuestionId);
 
             } else {
                 // 面试结束，生成最终评价
-                aiResponse = chatService.generateFinalFeedback(sessionId, userAnswer, currentQuestionId);
+                aiResponse = callPrivateMethod(chatService, "generateFinalFeedback",
+                        new Class[]{Long.class, String.class, Long.class},
+                        new Object[]{sessionId, userAnswer, currentQuestionId});
 
                 // 使用现有的SessionService方法结束会话
                 sessionService.endSession(sessionId);
 
                 newState = "INTERVIEW_COMPLETED";
-                chatEnabled = false;
-
-                logger.info("最终评价生成完成: sessionId={}", sessionId);
             }
 
-            if (aiResponse == null || aiResponse.trim().isEmpty()) {
-                // 降级处理
-                aiResponse = nextQuestionId != null ?
-                        "感谢您的回答，请继续下一个问题。" :
-                        "面试已结束，感谢您的参与！";
-                logger.warn("AI生成反馈失败，使用默认消息: sessionId={}", sessionId);
-            }
+            // 使用现有的saveAIMessage方法保存消息
+            MessageDTO aiMessage = callPrivateMethod(chatService, "saveAIMessage",
+                    new Class[]{Long.class, String.class}, new Object[]{sessionId, aiResponse});
 
-            // 保存AI消息
-            MessageDTO aiMessage = chatService.saveAIMessage(sessionId, aiResponse);
+            // 推送给前端
+            webSocketService.pushAIResponse(sessionId, aiResponse, newState);
 
-            // 发送AI响应到WebSocket响应队列
-            webSocketResponseProducer.sendAIResponseMessage(sessionId, aiResponse, newState);
-
-            // 发送会话状态更新
-            webSocketResponseProducer.sendSessionStateMessage(sessionId, newState, chatEnabled);
-
-            logger.info("反馈处理完成: sessionId={}, newState={}, responseLength={}",
-                    sessionId, newState, aiResponse.length());
+            logger.info("反馈生成完成: sessionId={}, currentQuestionId={}", sessionId, currentQuestionId);
 
         } catch (Exception e) {
-            logger.error("处理反馈生成失败: sessionId={}, currentQuestionId={}", sessionId, currentQuestionId, e);
-
-            // 错误处理：发送错误消息
-            webSocketResponseProducer.sendAIResponseMessage(sessionId, "AI暂时无法生成反馈，请稍后再试。", "ERROR");
-            webSocketResponseProducer.sendSessionStateMessage(sessionId, "WAITING_FOR_USER_ANSWER", true);
-
-            // 重新抛出异常，让上层处理重试逻辑
-            throw e;
+            logger.error("处理反馈生成失败: sessionId={}", sessionId, e);
+            webSocketService.pushAIResponse(sessionId, "AI暂时无法回应，请稍后再试。", "ERROR");
         }
     }
 
     /**
-     * 处理最终评价生成 - 添加异常处理
+     * 处理embedding计算 - 使用现有缓存管理器方法
+     */
+    private void processEmbeddingCalculation(Map<String, Object> payload) {
+        String type = (String) payload.get("type");
+
+        try {
+            switch(type) {
+                case "single_embedding" -> {
+                    String text = (String) payload.get("text");
+                    String cacheKey = (String) payload.get("cacheKey");
+
+                    // 使用AIResponseCacheManager的新增方法
+                    aiCacheManager.calculateAndCacheEmbedding(text, cacheKey);
+                    logger.debug("单个embedding计算完成: cacheKey={}", cacheKey);
+                }
+
+                case "batch_embedding" -> {
+                    List<Map<String, String>> textList = (List<Map<String, String>>) payload.get("textList");
+                    String batchId = (String) payload.get("batchId");
+
+                    Map<String, String> textCacheMap = new HashMap<>();
+                    for (Map<String, String> item : textList) {
+                        textCacheMap.put(item.get("text"), item.get("cacheKey"));
+                    }
+
+                    // 使用AIResponseCacheManager的新增方法
+                    aiCacheManager.batchCalculateEmbeddings(textCacheMap);
+                    logger.info("批量embedding计算完成: batchId={}, size={}", batchId, textList.size());
+                }
+
+                default -> logger.warn("未知的embedding计算类型: {}", type);
+            }
+        } catch (Exception e) {
+            logger.error("处理embedding计算失败: type={}", type, e);
+        }
+    }
+
+    /**
+     * 处理最终评价生成 - 使用现有方法
      */
     private void processFinalEvaluation(Map<String, Object> payload) {
         Long sessionId = getLongValue(payload, "sessionId");
         String lastAnswer = (String) payload.get("lastAnswer");
 
         try {
-            logger.debug("开始生成最终评价: sessionId={}", sessionId);
+            // 获取当前题目ID作为最后一题
+            Long lastQuestionId = sessionService.getPreviousQuestionId(sessionId);
 
-            if (sessionId == null) {
-                throw new IllegalArgumentException("缺少必要参数: sessionId为空");
-            }
+            // 使用现有的generateFinalFeedback方法
+            String evaluation = callPrivateMethod(chatService, "generateFinalFeedback",
+                    new Class[]{Long.class, String.class, Long.class},
+                    new Object[]{sessionId, lastAnswer, lastQuestionId});
 
-            // 发送处理状态
-            webSocketResponseProducer.sendProcessingStatusMessage(sessionId, "generating", "AI正在生成最终评价...");
+            // 使用现有的saveAIMessage方法
+            MessageDTO aiMessage = callPrivateMethod(chatService, "saveAIMessage",
+                    new Class[]{Long.class, String.class}, new Object[]{sessionId, evaluation});
 
-            // 生成最终评价
-            String finalEvaluation = chatService.generateFinalFeedback(sessionId, lastAnswer, null);
-
-            if (finalEvaluation == null || finalEvaluation.trim().isEmpty()) {
-                finalEvaluation = "面试已结束，感谢您的参与！我们会尽快为您提供详细的反馈。";
-                logger.warn("AI生成最终评价失败，使用默认消息: sessionId={}", sessionId);
-            }
-
-            // 结束会话
+            // 使用现有的SessionService.endSession方法
             sessionService.endSession(sessionId);
 
-            // 保存消息
-            MessageDTO aiMessage = chatService.saveAIMessage(sessionId, finalEvaluation);
+            // 推送给前端
+            webSocketService.pushAIResponse(sessionId, evaluation, "EVALUATION_COMPLETED");
 
-            // 发送响应
-            webSocketResponseProducer.sendAIResponseMessage(sessionId, finalEvaluation, "INTERVIEW_COMPLETED");
-            webSocketResponseProducer.sendSessionStateMessage(sessionId, "INTERVIEW_COMPLETED", false);
-
-            logger.info("最终评价生成完成: sessionId={}, responseLength={}", sessionId, finalEvaluation.length());
+            logger.info("最终评价生成完成: sessionId={}", sessionId);
 
         } catch (Exception e) {
-            logger.error("处理最终评价生成失败: sessionId={}", sessionId, e);
-
-            // 错误处理
-            webSocketResponseProducer.sendAIResponseMessage(sessionId, "面试已结束，感谢您的参与！", "INTERVIEW_COMPLETED");
-            webSocketResponseProducer.sendSessionStateMessage(sessionId, "INTERVIEW_COMPLETED", false);
-
-            throw e;
+            logger.error("处理最终评价失败: sessionId={}", sessionId, e);
+            webSocketService.pushAIResponse(sessionId, "感谢您参加本次面试！", "EVALUATION_COMPLETED");
         }
     }
 
-    /**
-     * 处理Embedding计算
-     */
-    private void processEmbeddingCalculation(Map<String, Object> payload) {
-        String type = (String) payload.get("type");
-
-        try {
-            switch (type) {
-                case "single_embedding" -> processSingleEmbedding(payload);
-                case "batch_embedding" -> processBatchEmbedding(payload);
-                case "similarity_check" -> processSimilarityCheck(payload);
-                default -> logger.warn("未知的embedding类型: {}", type);
-            }
-
-        } catch (Exception e) {
-            logger.error("处理embedding计算失败: type={}", type, e);
-            throw e;
-        }
-    }
+    // ===== 辅助方法 =====
 
     /**
-     * 处理单个embedding计算
-     */
-    private void processSingleEmbedding(Map<String, Object> payload) {
-        String text = (String) payload.get("text");
-        String cacheKey = (String) payload.get("cacheKey");
-
-        try {
-            // 修复：使用正确的方法名
-            aiCacheManager.calculateAndCacheEmbedding(text, cacheKey);
-            logger.debug("单个embedding计算完成: cacheKey={}", cacheKey);
-
-        } catch (Exception e) {
-            logger.error("单个embedding计算失败: cacheKey={}", cacheKey, e);
-            throw e;
-        }
-    }
-
-    /**
-     * 处理批量embedding计算
-     */
-    private void processBatchEmbedding(Map<String, Object> payload) {
-        String batchId = (String) payload.get("batchId");
-        @SuppressWarnings("unchecked")
-        List<Map<String, String>> textList = (List<Map<String, String>>) payload.get("textList");
-
-        try {
-            if (textList != null && !textList.isEmpty()) {
-                // 转换为Map<text, cacheKey>格式
-                Map<String, String> textCacheMap = new HashMap<>();
-                for (Map<String, String> item : textList) {
-                    String text = item.get("text");
-                    String cacheKey = item.get("cacheKey");
-                    if (text != null && cacheKey != null) {
-                        textCacheMap.put(text, cacheKey);
-                    }
-                }
-
-                // 修复：使用正确的方法名
-                aiCacheManager.batchCalculateEmbeddings(textCacheMap);
-                logger.info("批量embedding计算完成: batchId={}, size={}", batchId, textCacheMap.size());
-            }
-
-        } catch (Exception e) {
-            logger.error("批量embedding计算失败: batchId={}", batchId, e);
-            throw e;
-        }
-    }
-
-    /**
-     * 处理相似度检查
-     */
-    private void processSimilarityCheck(Map<String, Object> payload) {
-        Long sessionId = getLongValue(payload, "sessionId");
-        Long questionId = getLongValue(payload, "questionId");
-        String userAnswer = (String) payload.get("userAnswer");
-
-        try {
-            // 修复：使用正确的方法名
-            boolean isSimilar = aiCacheManager.checkAnswerSimilarity(questionId, userAnswer);
-            logger.debug("相似度检查完成: sessionId={}, questionId={}, isSimilar={}",
-                    sessionId, questionId, isSimilar);
-
-        } catch (Exception e) {
-            logger.error("相似度检查失败: sessionId={}, questionId={}", sessionId, questionId, e);
-            throw e;
-        }
-    }
-
-    /**
-     * 获取题目信息
+     * 获取题目信息 - 使用反射调用questionMapper
      */
     private Question getQuestionById(Long questionId) {
         try {
-            return questionMapper.findById(questionId).orElse(null);
+            // 通过反射访问ChatService中的questionMapper
+            java.lang.reflect.Field field = ChatService.class.getDeclaredField("questionMapper");
+            field.setAccessible(true);
+            Object questionMapper = field.get(chatService);
+
+            Method findByIdMethod = questionMapper.getClass().getMethod("findById", Long.class);
+            Optional<Question> result = (Optional<Question>) findByIdMethod.invoke(questionMapper, questionId);
+
+            return result.orElse(null);
+
         } catch (Exception e) {
             logger.error("获取题目失败: questionId={}", questionId, e);
             return null;
@@ -507,66 +370,43 @@ public class AIQueueConsumer {
     }
 
     /**
-     * 获取Long类型值的工具方法
+     * 通过反射调用ChatService的私有方法
      */
+    @SuppressWarnings("unchecked")
+    private <T> T callPrivateMethod(Object target, String methodName, Class<?>[] paramTypes, Object[] args) {
+        try {
+            Method method = target.getClass().getDeclaredMethod(methodName, paramTypes);
+            method.setAccessible(true);
+            return (T) method.invoke(target, args);
+        } catch (Exception e) {
+            logger.error("反射调用方法失败: method={}", methodName, e);
+            throw new RuntimeException("调用ChatService方法失败: " + methodName, e);
+        }
+    }
+
     private Long getLongValue(Map<String, Object> payload, String key) {
         Object value = payload.get(key);
+        if (value == null) return null;
         if (value instanceof Number) {
             return ((Number) value).longValue();
         }
-        if (value instanceof String) {
-            try {
-                return Long.parseLong((String) value);
-            } catch (NumberFormatException e) {
-                logger.warn("无法解析Long值: key={}, value={}", key, value);
-                return null;
-            }
-        }
-        return null;
+        return Long.parseLong(value.toString());
     }
 
-    /**
-     * 修复：确认消息处理完成
-     */
-    private void acknowledgeMessage(RecordId recordId) {
+    private void acknowledgeMessage(String recordId) {
         try {
-            String streamName = queueProperties.getStreams().getRequests();
-            String groupName = queueProperties.getConsumer().getGroupName();
-
-            redisTemplate.opsForStream().acknowledge(streamName, groupName, recordId);
-            logger.debug("消息确认成功: messageId={}", recordId);
-
+            redisTemplate.opsForStream().acknowledge(
+                    queueProperties.getConsumer().getGroupName(),
+                    queueProperties.getStreams().getRequests(),
+                    recordId);
         } catch (Exception e) {
-            logger.error("确认AI消息失败: messageId={}", recordId, e);
+            logger.error("确认消息失败: recordId={}", recordId, e);
         }
     }
 
-    /**
-     * 修复：改进错误处理机制
-     */
-    private void handleProcessingError(MapRecord<String, Object, Object> record, Exception error) {
-        try {
-            Map<Object, Object> data = record.getValue();
-            String messageId = (String) data.get("messageId");
-            Integer retryCount = (Integer) data.get("retryCount");
-            int currentRetryCount = retryCount != null ? retryCount : 0;
-
-            if (currentRetryCount < queueProperties.getProcessors().getMaxRetries()) {
-                logger.warn("AI消息处理失败，暂不确认消息以便重试: messageId={}, 当前重试次数={}, 错误={}",
-                        messageId, currentRetryCount, error.getMessage());
-
-                // 修复：不确认消息，让Redis Stream的pending机制自动重试
-                // 可以考虑在这里增加延迟确认的逻辑
-
-            } else {
-                logger.error("AI消息处理达到最大重试次数，确认消息避免无限重试: messageId={}, 错误={}",
-                        messageId, error.getMessage());
-                // 达到最大重试次数后确认消息，避免无限循环
-                acknowledgeMessage(record.getId());
-            }
-
-        } catch (Exception e) {
-            logger.error("处理AI消息错误时出错", e);
-        }
+    private void handleProcessingError(MapRecord<String, Object, Object> record, Throwable error) {
+        String messageId = (String) record.getValue().get("messageId");
+        logger.error("AI消息处理失败，将确认消息: messageId={}", messageId, error);
+        acknowledgeMessage(String.valueOf(record.getId()));
     }
 }

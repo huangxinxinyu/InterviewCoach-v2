@@ -1,6 +1,3 @@
-// frontend/src/types/index.ts
-// 主要类型定义 - 增加WebSocket支持
-
 export interface User {
     id: number
     email: string
@@ -147,23 +144,3 @@ export interface ChatMessageResponseDTO {
     session?: SessionDTO
     timestamp?: string
 }
-
-// 重新导出WebSocket相关类型
-export type {
-    WSMessage,
-    WSEventHandlers,
-    ConnectionInfo,
-    AIResponseMessage,
-    SessionStateUpdateMessage,
-    AIProcessingStatusMessage,
-    ErrorMessage
-} from './websocket'
-
-export {
-    WSMessageType,
-    SessionState,
-    AIProcessingStatus
-} from './websocket'
-
-// 从services导入ConnectionState，避免循环依赖
-export { ConnectionState } from '@/services/websocket'

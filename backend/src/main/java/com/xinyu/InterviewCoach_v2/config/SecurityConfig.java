@@ -54,9 +54,6 @@ public class SecurityConfig {
 
                 // 配置授权规则
                 .authorizeHttpRequests(auth -> auth
-                        // 新增：允许WebSocket连接
-                        .requestMatchers("/ws/chat/**").permitAll()
-                        .requestMatchers("/api/queue/**").hasRole("ADMIN")
                         // 公开端点 - 不需要认证
                         .requestMatchers(
                                 "/api/users/login",           // 登录接口
