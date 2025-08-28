@@ -129,13 +129,15 @@ public class AIQueueConsumer {
                 if (!filteredRecords.isEmpty()) {
                     logger.debug("收到{}优先级AI消息: count={}", priority, filteredRecords.size());
 
-                    // 修复：使用指定线程池处理消息
                     for (MapRecord<String, Object, Object> record : filteredRecords) {
-                        CompletableFuture.runAsync(() -> processAIMessage(record), aiProcessorExecutor)
-                                .exceptionally(throwable -> {
-                                    logger.error("AI消息异步处理异常: recordId={}", record.getId(), throwable);
-                                    return null;
-                                });
+                        CompletableFuture.runAsync(() -> {
+                            try {
+                                processAIMessage(record);
+                            } catch (Exception e) {
+                                logger.error("AI消息异步处理异常: recordId={}", record.getId(), e);
+                                handleProcessingError(record, e);
+                            }
+                        }, aiProcessorExecutor);
                     }
                 }
             }
@@ -191,7 +193,7 @@ public class AIQueueConsumer {
 
             // 修复：处理成功后才确认消息
             if (processSuccess) {
-                acknowledgeMessage(String.valueOf(record.getId()));
+                acknowledgeMessage(record.getId());
 
                 long duration = System.currentTimeMillis() - startTime;
                 logger.info("AI消息处理成功: topic={}, messageId={}, 耗时={}ms", topic, messageId, duration);
@@ -526,16 +528,16 @@ public class AIQueueConsumer {
     /**
      * 修复：确认消息处理完成
      */
-    private void acknowledgeMessage(String messageId) {
+    private void acknowledgeMessage(RecordId recordId) {
         try {
             String streamName = queueProperties.getStreams().getRequests();
             String groupName = queueProperties.getConsumer().getGroupName();
 
-            redisTemplate.opsForStream().acknowledge(streamName, groupName, messageId);
-            logger.debug("消息确认成功: messageId={}", messageId);
+            redisTemplate.opsForStream().acknowledge(streamName, groupName, recordId);
+            logger.debug("消息确认成功: messageId={}", recordId);
 
         } catch (Exception e) {
-            logger.error("确认AI消息失败: messageId={}", messageId, e);
+            logger.error("确认AI消息失败: messageId={}", recordId, e);
         }
     }
 
@@ -560,7 +562,7 @@ public class AIQueueConsumer {
                 logger.error("AI消息处理达到最大重试次数，确认消息避免无限重试: messageId={}, 错误={}",
                         messageId, error.getMessage());
                 // 达到最大重试次数后确认消息，避免无限循环
-                acknowledgeMessage(String.valueOf(record.getId()));
+                acknowledgeMessage(record.getId());
             }
 
         } catch (Exception e) {

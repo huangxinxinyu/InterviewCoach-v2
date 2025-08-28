@@ -196,6 +196,7 @@ public class ChatService {
                         nextQuestion != null ? nextQuestion.getId() : null);
             } else {
                 // 没有下一题，发送最终评价请求
+                System.out.println("----------------------没有更多题目");
                 aiQueueProducer.sendFinalEvaluationRequest(sessionId, request.getText());
             }
 

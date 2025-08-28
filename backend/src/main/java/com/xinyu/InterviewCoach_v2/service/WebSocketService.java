@@ -103,6 +103,10 @@ public class WebSocketService {
             return false;
         }
 
+        // 添加调试信息
+        logger.info("开始发送AI响应: sessionId={}, thread={}, wsSession={}",
+                sessionId, Thread.currentThread().getName(), wsSession.getId());
+
         try {
             Map<String, Object> message = Map.of(
                     "type", "ai_response",
@@ -114,19 +118,22 @@ public class WebSocketService {
             );
 
             String jsonMessage = objectMapper.writeValueAsString(message);
+
+            // 记录发送前状态
+            logger.info("准备发送WebSocket消息: sessionId={}, thread={}, messageType=ai_response",
+                    sessionId, Thread.currentThread().getName());
+
             wsSession.sendMessage(new TextMessage(jsonMessage));
 
-            // 更新最后活动时间
+            logger.info("WebSocket消息发送成功: sessionId={}, thread={}",
+                    sessionId, Thread.currentThread().getName());
+
             updateLastActivity(wsSession.getId());
-
-            logger.debug("AI回复已推送: sessionId={}, state={}, messageLength={}",
-                    sessionId, currentState, aiResponse.length());
-
             return true;
 
         } catch (Exception e) {
-            logger.error("推送AI回复失败: sessionId={}", sessionId, e);
-            // 连接异常时清理
+            logger.error("推送AI回复失败: sessionId={}, thread={}, error={}",
+                    sessionId, Thread.currentThread().getName(), e.getMessage());
             removeConnection(sessionId, null, wsSession.getId());
             return false;
         }
@@ -143,6 +150,9 @@ public class WebSocketService {
             return false;
         }
 
+        logger.info("开始发送状态更新: sessionId={}, thread={}, wsSession={}",
+                sessionId, Thread.currentThread().getName(), wsSession.getId());
+
         try {
             Map<String, Object> message = Map.of(
                     "type", "session_state_update",
@@ -153,17 +163,21 @@ public class WebSocketService {
             );
 
             String jsonMessage = objectMapper.writeValueAsString(message);
+
+            logger.info("准备发送WebSocket消息: sessionId={}, thread={}, messageType=session_state",
+                    sessionId, Thread.currentThread().getName());
+
             wsSession.sendMessage(new TextMessage(jsonMessage));
 
+            logger.info("WebSocket消息发送成功: sessionId={}, thread={}",
+                    sessionId, Thread.currentThread().getName());
+
             updateLastActivity(wsSession.getId());
-
-            logger.debug("会话状态更新已推送: sessionId={}, state={}, chatEnabled={}",
-                    sessionId, state, chatEnabled);
-
             return true;
 
         } catch (Exception e) {
-            logger.error("推送会话状态更新失败: sessionId={}", sessionId, e);
+            logger.error("推送会话状态更新失败: sessionId={}, thread={}, error={}",
+                    sessionId, Thread.currentThread().getName(), e.getMessage());
             removeConnection(sessionId, null, wsSession.getId());
             return false;
         }
