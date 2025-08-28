@@ -74,7 +74,7 @@
                     {{ session.completed ? '完成' : '进行中' }}
                   </span>
                   <button
-                      @click.stop="deleteSession(session.id as number)"
+                      @click.stop="deleteSession(session.id)"
                       class="p-1 text-red-400 hover:text-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -267,7 +267,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
 import { useUIStore } from '@/stores/ui'
 import { SessionMode } from '@/types'
-import type { Session, Message } from '@/types'
+import type { Session, Message, StartInterviewRequest} from '@/types'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import InterviewModeModal from '@/components/modals/InterviewModeModal.vue'
 import DeleteConfirmModal from '@/components/modals/DeleteConfirmModal.vue'
@@ -426,8 +426,8 @@ const selectSession = async (sessionId: string | number) => {
   }
 }
 
-const deleteSession = (sessionId: string) => {
-  uiStore.showDeleteConfirmModal(() => chatStore.deleteSession(sessionId))
+const deleteSession = (sessionId: number) => {
+  uiStore.openDeleteConfirmModal(sessionId, () => chatStore.deleteSession(sessionId))
 }
 
 const handleStartInterview = async (request: StartInterviewRequest) => {

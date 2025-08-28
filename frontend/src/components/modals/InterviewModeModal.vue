@@ -206,8 +206,17 @@
 </template>
 
 <script setup lang="ts">
+// frontend/src/components/modals/InterviewModeModal.vue 的完整 <script setup> 修复
+
 import { ref, computed, watch } from 'vue'
-import { SessionMode, type Tag, type QuestionSet, type Template, type StartInterviewRequest } from '@/types'
+import { SessionMode } from '@/types'  // 修复：正确导入 SessionMode
+import type {
+  Tag,
+  QuestionSet,
+  Template,
+  StartInterviewRequest,
+  APIResponse  // 修复：导入 APIResponse 类型
+} from '@/types'
 import { optionsAPI } from '@/services/api'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
@@ -232,6 +241,7 @@ const loading = ref(false)
 const loadingOptions = ref(false)
 const optionsError = ref<string | null>(null)
 
+// 修复：声明响应式变量
 const availableTags = ref<Tag[]>([])
 const availableQuestionSets = ref<QuestionSet[]>([])
 const availableTemplates = ref<Template[]>([])
@@ -281,20 +291,7 @@ const goToStep2 = async () => {
   await loadOptions()
 }
 
-const safeDataAccess = (response: any): any[] => {
-  if (response && response.data && Array.isArray(response.data.data)) {
-    return response.data.data;
-  }
-  if (response && Array.isArray(response.data)) {
-    return response.data;
-  }
-  if (Array.isArray(response)) {
-    return response;
-  }
-  return [];
-};
-
-
+// 修复：完整的数据加载方法
 const loadOptions = async () => {
   if (!selectedMode.value) return
 
@@ -305,29 +302,29 @@ const loadOptions = async () => {
     switch (selectedMode.value) {
       case SessionMode.SINGLE_TOPIC:
         const tagsResponse = await optionsAPI.getTags()
-        // 使用已有的APIResponse类型
+        // 修复：正确处理API响应数据
         availableTags.value = Array.isArray(tagsResponse.data)
             ? tagsResponse.data
-            : tagsResponse.data.data || []
+            : (tagsResponse.data as APIResponse<Tag[]>)?.data || []
         break
       case SessionMode.STRUCTURED_SET:
         const questionSetsResponse = await optionsAPI.getQuestionSets()
         availableQuestionSets.value = Array.isArray(questionSetsResponse.data)
             ? questionSetsResponse.data
-            : questionSetsResponse.data.data || []
+            : (questionSetsResponse.data as APIResponse<QuestionSet[]>)?.data || []
         break
       case SessionMode.STRUCTURED_TEMPLATE:
         const templatesResponse = await optionsAPI.getTemplates()
         availableTemplates.value = Array.isArray(templatesResponse.data)
             ? templatesResponse.data
-            : templatesResponse.data.data || []
+            : (templatesResponse.data as APIResponse<Template[]>)?.data || []
         break
     }
-  } catch (error: any) {
-    console.error('加载选项失败:', error)
-    const errorMessage = error.response?.data?.message ||
-        error.response?.data?.error ||
-        error.message ||
+  } catch (err: any) {
+    console.error('加载选项失败:', err)
+    const errorMessage = err.response?.data?.message ||
+        err.response?.data?.error ||
+        err.message ||
         '加载选项失败，请稍后重试'
     optionsError.value = errorMessage
   } finally {
@@ -359,8 +356,8 @@ const startInterview = async () => {
     }
 
     emit('start-interview', request as StartInterviewRequest)
-  } catch (error) {
-    console.error('构建面试请求失败:', error)
+  } catch (err) {
+    console.error('构建面试请求失败:', err)
     loading.value = false
   }
 }

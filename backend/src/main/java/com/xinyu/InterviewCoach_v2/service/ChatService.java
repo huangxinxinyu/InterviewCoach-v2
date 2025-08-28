@@ -586,7 +586,7 @@ public class ChatService {
             prompt.append("像面试官内心真实想法一样直接\n");
             prompt.append("语气要职业但不客套\n");
             prompt.append("永远用你称呼对面\n");
-            prompt.append("最后输出别搞特殊格式，就一段话讲完\n\n");
+            prompt.append("记住得严格，非常严格。最后输出别搞特殊格式，就一段话讲完\n\n");
 
             return callOpenAI(prompt.toString());
 

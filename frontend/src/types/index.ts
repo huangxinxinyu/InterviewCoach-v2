@@ -87,7 +87,7 @@ export interface SessionDTO {
 export interface InterviewSessionResponse {
     success: boolean
     message?: string
-    session?: SessionDTO  // 这里包含的是 SessionDTO
+    session?: SessionDTO
     currentState?: string
     chatInputEnabled?: boolean
     timestamp?: string
@@ -127,13 +127,14 @@ export interface TemplateData {
     totalQuestionCount?: number
 }
 
-// API响应类型
-export interface ApiResponse<T = any> {
+export interface APIResponse<T = any> {
     success: boolean
     data?: T
     message?: string
     error?: string
 }
+
+export interface ApiResponse<T = any> extends APIResponse<T> {}
 
 export interface ChatMessageResponseDTO {
     success: boolean
