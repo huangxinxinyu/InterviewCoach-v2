@@ -1,14 +1,14 @@
-FROM node:20-alpine AS builder
+# 使用 node:20 而不是 alpine 版本，提供更好的兼容性
+FROM node:20 AS builder
 
 WORKDIR /app
 
 # 复制 package 文件
 COPY package*.json ./
 
-# 安装依赖
-RUN npm ci --only=production
+RUN npm cache clean --force && \
+    npm install
 
-# 复制源代码
 COPY . .
 
 # 构建应用

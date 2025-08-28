@@ -82,7 +82,7 @@ COMMENT = '题目与标签关联表';
 CREATE TABLE IF NOT EXISTS `session` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '会话ID',
   `user_id` BIGINT NOT NULL COMMENT '用户ID',
-  `mode` ENUM('structured_template', 'structured_set', 'single_topic') NOT NULL COMMENT '会话模式',
+  `mode` ENUM('STRUCTURED_TEMPLATE', 'STRUCTURED_SET', 'SINGLE_TOPIC') NOT NULL COMMENT '会话模式',
   `expected_question_count` INTEGER NULL COMMENT '期望的题目数量',
   `asked_question_count` INTEGER NULL COMMENT 'AI已经提问的题目数量',
   `completed_question_count` INTEGER NULL COMMENT '用户已经回答的题目数量',
