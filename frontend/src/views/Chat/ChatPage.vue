@@ -409,9 +409,17 @@ const messageBubbleClasses = (message: Message) => {
   return `${baseClasses} ${typeClasses}`
 }
 
-const selectSession = async (sessionId: string) => {
+const selectSession = async (sessionId: string | number) => {
   try {
-    await chatStore.setCurrentSession(sessionId)
+    const numericSessionId = typeof sessionId === 'string' ? parseInt(sessionId) : sessionId
+    const session = chatStore.sessions.find(s => s.id === numericSessionId)
+
+    if (!session) {
+      uiStore.addNotification('error', '会话不存在')
+      return
+    }
+
+    await chatStore.setCurrentSession(session)
     await scrollToBottom()
   } catch (error) {
     uiStore.addNotification('error', '切换会话失败')
