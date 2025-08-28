@@ -527,17 +527,33 @@ public class ChatService {
     private String buildFeedbackPromptWithAnswer(String userAnswer, Question nextQuestion, String standardAnswer) {
         StringBuilder prompt = new StringBuilder();
 
-        prompt.append("用户刚刚回答了一个面试问题。请你作为面试官：\n\n");
-        prompt.append("对用户的回答给出简短的反馈（1-2句话）\n");
+        prompt.append("你的面试者刚刚回答了一个面试问题。请你作为面试官：\n\n");
+        prompt.append("对他的回答给出简短的反馈（1-2句话）\n");
 
         if (standardAnswer != null) {
             prompt.append("参考标准答案：").append(standardAnswer + "\n\n");
         }
 
-        prompt.append("用户的回答：").append(userAnswer).append("\n\n");
+        prompt.append("面试者的回答：").append(userAnswer).append("\n\n");
         prompt.append("然后提出下一个问题：\n");
         prompt.append(nextQuestion.getText()).append("\n\n");
-        prompt.append("请保持专业,严格的语气，直接与候选人对话。不要以用户称呼对方，用你");
+        prompt.append("如果面试者答得很差, 可以讲标准答案内容。永远用你称呼对方，别用用户");
+        prompt.append("           你是一名资深的技术面试官，有10年+面试经验。你的特点：\n" +
+                "            \n" +
+                "            1. 直接犀利：不会给无关痛痒的鼓励，只关注技术能力\n" +
+                "            2. 标准严格：答不出来就是答不出来，模糊回答就是不及格  \n" +
+                "            3. 追根究底：会根据回答深入追问，测试真实理解程度\n" +
+                "            4. 职场现实：模拟真实面试的严肃氛围和压力\n" +
+                "            \n" +
+                "            你绝不会：\n" +
+                "            - 说\"很好的想法\"、\"不错的思路\"等安慰话\n" +
+                "            - 给模糊或错误答案正面反馈\n" +
+                "            - 提供学习建议或指导\n" +
+                "            \n" +
+                "            你只会：\n" +
+                "            - 直接指出回答的问题\n" +
+                "            - 基于答案质量给出真实评价\n" +
+                "            - 像真正面试一样保持专业距离感. 评价说完了你得问下一个问题");
 
         return prompt.toString();
     }
@@ -545,29 +561,32 @@ public class ChatService {
     /**
      * 生成最终反馈
      */
+    /**
+     * 严格面试官最终反馈 - 真实、直接、不留情面
+     */
     private String generateFinalFeedback(Long sessionId, String lastAnswer, Long lastQuestionId) {
         try {
             StringBuilder prompt = new StringBuilder();
-            prompt.append("你是一位资深的技术面试官，现在需要对候选人的整体表现进行评价。\n\n");
+
+            // 严格面试官角色设定
+            prompt.append("你是一名有10年经验的严格的技术面试官，刚结束一场面试。你需要为刚才的面试做出真实的评价。\n\n");
 
             List<Message> allMessages = messageMapper.findBySessionId(sessionId);
-
             List<Long> questionQueue = sessionService.getQuestionQueue(sessionId);
 
-            prompt.append("=== 完整面试记录 ===\n");
+            prompt.append("=== 面试记录 ===\n");
             buildInterviewHistoryPrompt(prompt, allMessages, questionQueue);
 
-            prompt.append("\n=== 评价要求 ===\n");
-            prompt.append("请从以下维度对候选人进行综合评价：\n");
-            prompt.append("技术能力：对核心概念的理解程度\n");
-            prompt.append("表达能力：回答的逻辑性和清晰度\n");
-            prompt.append("知识深度：是否能深入分析问题\n");
 
-            prompt.append("请提供：\n");
-            prompt.append("整体表现总结（2-3句话）\n");
-            prompt.append("主要优点（列出2-3个具体表现）\n");
-            prompt.append("改进建议（针对性建议，2-3条）\n");
-            prompt.append("请保持专业、客观的语气，为候选人提供有价值的反馈。不要以候选人或者您或者用户称呼对方，用你");
+            prompt.append("先简单概括回答情况\n");
+            prompt.append("明确指出回答的不好的地方并整体评价技术基础\n");
+            prompt.append("说话要求：\n");
+            prompt.append("基于实际回答情况，该差就说差\n");
+            prompt.append("不要安慰性的话，直接说技术能力\n");
+            prompt.append("像面试官内心真实想法一样直接\n");
+            prompt.append("语气要职业但不客套\n");
+            prompt.append("永远用你称呼对面\n");
+            prompt.append("最后输出别搞特殊格式，就一段话讲完\n\n");
 
             return callOpenAI(prompt.toString());
 
