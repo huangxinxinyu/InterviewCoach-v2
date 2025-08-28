@@ -74,7 +74,7 @@
                     {{ session.completed ? '完成' : '进行中' }}
                   </span>
                   <button
-                      @click.stop="deleteSession(session.id)"
+                      @click.stop="deleteSession(session.id as number)"
                       class="p-1 text-red-400 hover:text-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -427,12 +427,12 @@ const selectSession = async (sessionId: string | number) => {
 }
 
 const deleteSession = (sessionId: string) => {
-  uiStore.showDeleteConfirm(() => chatStore.deleteSession(sessionId))
+  uiStore.showDeleteConfirmModal(() => chatStore.deleteSession(sessionId))
 }
 
-const handleStartInterview = async (mode: SessionMode) => {
+const handleStartInterview = async (request: StartInterviewRequest) => {
   try {
-    await chatStore.createSession(mode)
+    await chatStore.createSession(request)
     closeInterviewModeModal()
     await scrollToBottom()
   } catch (error) {
@@ -459,9 +459,7 @@ const formatTime = (date: string | Date) => {
 }
 
 const getModeDescription = (mode: SessionMode | string) => {
-  const modeStr = typeof mode === 'object' && mode !== null
-      ? mode.toString()
-      : mode
+  const modeStr = String(mode)
 
   switch (modeStr) {
     case 'SINGLE_TOPIC':

@@ -15,7 +15,6 @@
       </div>
     </template>
 
-    <!-- 第一步：选择模式 -->
     <div v-if="currentStep === 1" class="space-y-4">
       <p class="text-primary-600">选择你想要的面试练习模式：</p>
 
@@ -49,7 +48,6 @@
       </div>
     </div>
 
-    <!-- 第二步：选择具体配置 -->
     <div v-else-if="currentStep === 2" class="space-y-4">
       <button
           @click="goBackToStep1"
@@ -61,7 +59,6 @@
         返回模式选择
       </button>
 
-      <!-- 加载状态 -->
       <div v-if="loadingOptions" class="text-center py-8">
         <div class="inline-flex items-center">
           <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-primary-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -72,7 +69,6 @@
         </div>
       </div>
 
-      <!-- 错误状态 -->
       <div v-else-if="optionsError" class="text-center py-8">
         <div class="text-red-600 mb-4">{{ optionsError }}</div>
         <button
@@ -83,7 +79,6 @@
         </button>
       </div>
 
-      <!-- 选项列表 -->
       <div v-else class="space-y-3">
         <template v-if="selectedMode === SessionMode.SINGLE_TOPIC">
           <div class="space-y-3">
@@ -105,13 +100,9 @@
               />
               <div>
                 <div class="font-medium text-primary-900">{{ tag.name }}</div>
-                <div v-if="tag.description" class="text-sm text-primary-500 mt-2">
-                  {{ tag.description }}
-                </div>
               </div>
             </label>
 
-            <!-- 题目数量选择 -->
             <div v-if="selectedOption" class="mt-4 p-4 bg-primary-25 rounded-lg">
               <label class="block text-sm font-medium text-primary-700 mb-2">
                 期望题目数量
@@ -150,9 +141,6 @@
               <div class="font-medium text-primary-900">{{ questionSet.name }}</div>
               <div v-if="questionSet.description" class="text-sm text-primary-500 mt-2">
                 {{ questionSet.description }}
-              </div>
-              <div class="text-sm text-primary-600 mt-2">
-                包含 {{ questionSet.questionCount }} 道题目
               </div>
             </div>
           </label>
@@ -219,7 +207,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { SessionMode, type Tag, type QuestionSet, type Template } from '@/types'
+import { SessionMode, type Tag, type QuestionSet, type Template, type StartInterviewRequest } from '@/types'
 import { optionsAPI } from '@/services/api'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
@@ -230,13 +218,12 @@ interface Props {
 
 interface Emits {
   (e: 'close'): void
-  (e: 'start-interview', request: any): void
+  (e: 'start-interview', request: StartInterviewRequest): void
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
-// 响应式数据
 const currentStep = ref(1)
 const selectedMode = ref<SessionMode | ''>('')
 const selectedOption = ref<number | null>(null)
@@ -245,12 +232,10 @@ const loading = ref(false)
 const loadingOptions = ref(false)
 const optionsError = ref<string | null>(null)
 
-// 真实数据
 const availableTags = ref<Tag[]>([])
 const availableQuestionSets = ref<QuestionSet[]>([])
 const availableTemplates = ref<Template[]>([])
 
-// 面试模式定义
 const interviewModes = {
   [SessionMode.SINGLE_TOPIC]: {
     title: '单主题模式',
@@ -266,12 +251,10 @@ const interviewModes = {
   }
 }
 
-// 计算属性
 const selectedModeInfo = computed(() => {
   return selectedMode.value ? interviewModes[selectedMode.value as keyof typeof interviewModes] : null
 })
 
-// 方法
 const handleClose = () => {
   resetModal()
   emit('close')
@@ -298,7 +281,20 @@ const goToStep2 = async () => {
   await loadOptions()
 }
 
-// 加载选项数据
+const safeDataAccess = (response: any): any[] => {
+  if (response && response.data && Array.isArray(response.data.data)) {
+    return response.data.data;
+  }
+  if (response && Array.isArray(response.data)) {
+    return response.data;
+  }
+  if (Array.isArray(response)) {
+    return response;
+  }
+  return [];
+};
+
+
 const loadOptions = async () => {
   if (!selectedMode.value) return
 
@@ -309,16 +305,22 @@ const loadOptions = async () => {
     switch (selectedMode.value) {
       case SessionMode.SINGLE_TOPIC:
         const tagsResponse = await optionsAPI.getTags()
-        // 处理后端的统一响应格式 {success: true, data: [...]}
-        availableTags.value = tagsResponse.data.data || tagsResponse.data || []
+        // 使用已有的APIResponse类型
+        availableTags.value = Array.isArray(tagsResponse.data)
+            ? tagsResponse.data
+            : tagsResponse.data.data || []
         break
       case SessionMode.STRUCTURED_SET:
         const questionSetsResponse = await optionsAPI.getQuestionSets()
-        availableQuestionSets.value = questionSetsResponse.data.data || questionSetsResponse.data || []
+        availableQuestionSets.value = Array.isArray(questionSetsResponse.data)
+            ? questionSetsResponse.data
+            : questionSetsResponse.data.data || []
         break
       case SessionMode.STRUCTURED_TEMPLATE:
         const templatesResponse = await optionsAPI.getTemplates()
-        availableTemplates.value = templatesResponse.data.data || templatesResponse.data || []
+        availableTemplates.value = Array.isArray(templatesResponse.data)
+            ? templatesResponse.data
+            : templatesResponse.data.data || []
         break
     }
   } catch (error: any) {
@@ -339,11 +341,10 @@ const startInterview = async () => {
   loading.value = true
 
   try {
-    const request: any = {
+    const request: Partial<StartInterviewRequest> = {
       mode: selectedMode.value as SessionMode
     }
 
-    // 根据不同模式构建请求参数
     switch (selectedMode.value) {
       case SessionMode.SINGLE_TOPIC:
         request.tagId = selectedOption.value
@@ -357,13 +358,12 @@ const startInterview = async () => {
         break
     }
 
-    emit('start-interview', request)
+    emit('start-interview', request as StartInterviewRequest)
   } catch (error) {
     console.error('构建面试请求失败:', error)
     loading.value = false
   }
 }
-
 
 watch(() => props.show, (newShow) => {
   if (!newShow) {

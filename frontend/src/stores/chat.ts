@@ -61,92 +61,51 @@ export const useChatStore = defineStore('chat', () => {
 
     // 创建新会话
     const createSession = async (request: StartInterviewRequest) => {
-        console.group('🚀 创建会话开始')
-        console.log('📋 请求参数:', JSON.stringify(request, null, 2))
-
         loading.value = true
         error.value = null
 
         try {
-            console.log('📡 发送API请求到 /api/chat/sessions')
             const response = await chatAPI.createSession(request)
+            const responseData = response.data as InterviewSessionResponse
 
-            console.log('✅ API响应状态:', response.status)
-            console.log('📦 API响应数据:', JSON.stringify(response.data, null, 2))
-
-            // 检查响应数据结构
-            const responseData = response.data
-            console.log('🔍 响应数据类型:', typeof responseData)
-            console.log('🔍 是否有success字段:', 'success' in responseData)
-            console.log('🔍 是否有session字段:', 'session' in responseData)
-
-            let sessionDTO
+            // 修复：直接使用 SessionDTO 类型
+            let sessionDTO: SessionDTO
             if (responseData.session) {
                 sessionDTO = responseData.session
-                console.log('📄 从 session 字段提取 SessionDTO:', sessionDTO)
             } else {
-                sessionDTO = responseData
-                console.log('📄 直接使用响应数据作为 SessionDTO:', sessionDTO)
+                // 如果没有session字段，说明整个响应就是SessionDTO
+                sessionDTO = responseData as unknown as SessionDTO
             }
 
-            // 转换过程详细日志
-            console.log('🔄 开始转换 SessionDTO 到 Session')
             const newSession = convertSessionDTOToSession(sessionDTO)
-            console.log('✅ 转换完成的 Session:', JSON.stringify(newSession, null, 2))
-
-            // 状态更新日志
-            console.log('📝 更新前的 sessions 数组长度:', sessions.value.length)
             sessions.value.unshift(newSession)
             currentSession.value = newSession
-            console.log('📝 更新后的 sessions 数组长度:', sessions.value.length)
-            console.log('📝 当前会话ID:', currentSession.value?.id)
 
-            // 获取消息的详细过程
-            console.log('📨 开始获取会话消息')
+            // 获取消息（修复第111-112行）
             try {
                 const messagesResponse = await chatAPI.getMessages(newSession.id)
-                console.log('📨 消息API响应:', JSON.stringify(messagesResponse.data, null, 2))
+                let messagesArray: Message[]
 
-                let messagesArray
-                if (messagesResponse.data.data) {
-                    messagesArray = messagesResponse.data.data
-                    console.log('📨 从 data.data 获取消息数组')
-                } else if (Array.isArray(messagesResponse.data)) {
+                if (Array.isArray(messagesResponse.data)) {
                     messagesArray = messagesResponse.data
-                    console.log('📨 直接使用响应数据作为消息数组')
+                } else if ((messagesResponse.data as APIResponse<Message[]>).data) {
+                    messagesArray = (messagesResponse.data as APIResponse<Message[]>).data
                 } else {
                     messagesArray = []
-                    console.log('📨 无法解析消息数据，使用空数组')
                 }
 
                 messages.value = messagesArray
-                console.log('📨 设置的消息数量:', messages.value.length)
-
-                if (messages.value.length > 0) {
-                    console.log('📨 第一条消息:', JSON.stringify(messages.value[0], null, 2))
-                }
-
             } catch (msgError: any) {
-                console.error('❌ 获取消息失败:', msgError)
-                console.error('❌ 错误详情:', msgError.response?.data)
+                console.error('获取消息失败:', msgError)
                 messages.value = []
             }
 
-            console.log('✅ 会话创建成功')
             return newSession
-
         } catch (err: any) {
-            console.error('❌ 创建会话失败')
-            console.error('❌ 错误对象:', err)
-            console.error('❌ HTTP状态码:', err.response?.status)
-            console.error('❌ 错误响应数据:', err.response?.data)
-            console.error('❌ 错误消息:', err.message)
-
             error.value = err.response?.data?.message || '创建会话失败'
             throw err
         } finally {
             loading.value = false
-            console.groupEnd()
         }
     }
 
@@ -157,24 +116,18 @@ export const useChatStore = defineStore('chat', () => {
 
         try {
             const response = await chatAPI.getSessions()
-            console.log('getSessions response:', response.data)
-
-            // 处理不同的响应格式
-            let sessionDTOList
             const data = response.data
 
+            let sessionDTOList: SessionDTO[]
             if (Array.isArray(data)) {
                 sessionDTOList = data
-            } else if (data && Array.isArray(data.data)) {
-                sessionDTOList = data.data
+            } else if ((data as APIResponse<SessionDTO[]>).data && Array.isArray((data as APIResponse<SessionDTO[]>).data)) {
+                sessionDTOList = (data as APIResponse<SessionDTO[]>).data
             } else {
                 sessionDTOList = []
             }
 
-            // 将 SessionDTO 数组转换为 Session 数组
             sessions.value = sessionDTOList.map(convertSessionDTOToSession)
-            console.log('Converted sessions:', sessions.value)
-
         } catch (err: any) {
             console.error('fetchSessions error:', err)
             error.value = err.response?.data?.message || '获取会话列表失败'
@@ -191,29 +144,51 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     // 获取会话消息
-// 获取会话消息
+    const fetchSessions = async () => {
+        loading.value = true
+        error.value = null
+
+        try {
+            const response = await chatAPI.getSessions()
+            const data = response.data
+
+            let sessionDTOList: SessionDTO[]
+            if (Array.isArray(data)) {
+                sessionDTOList = data
+            } else if ((data as APIResponse<SessionDTO[]>).data && Array.isArray((data as APIResponse<SessionDTO[]>).data)) {
+                sessionDTOList = (data as APIResponse<SessionDTO[]>).data
+            } else {
+                sessionDTOList = []
+            }
+
+            sessions.value = sessionDTOList.map(convertSessionDTOToSession)
+        } catch (err: any) {
+            console.error('fetchSessions error:', err)
+            error.value = err.response?.data?.message || '获取会话列表失败'
+            sessions.value = []
+        } finally {
+            loading.value = false
+        }
+    }
+
+// fetchMessages 方法修复（第205-207行）
     const fetchMessages = async (sessionId: number) => {
         loading.value = true
         error.value = null
 
         try {
             const response = await chatAPI.getMessages(sessionId)
-            console.log('fetchMessages response:', response.data)
+            let messagesArray: Message[]
 
-            // 正确处理后端响应格式
-            let messagesArray
-            if (response.data.data) {
-                // 如果响应格式是 {success: true, data: [...]}
-                messagesArray = response.data.data
-            } else if (Array.isArray(response.data)) {
-                // 如果直接返回数组
+            if (Array.isArray(response.data)) {
                 messagesArray = response.data
+            } else if ((response.data as APIResponse<Message[]>).data) {
+                messagesArray = (response.data as APIResponse<Message[]>).data
             } else {
                 messagesArray = []
             }
 
             messages.value = messagesArray
-            console.log('fetchMessages 设置的消息列表:', messages.value)
         } catch (err: any) {
             console.error('fetchMessages error:', err)
             error.value = err.response?.data?.message || '获取消息失败'
@@ -224,9 +199,6 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     // 发送消息
-// 在 stores/chat.ts 的 sendMessage 方法中添加日志
-
-// 发送消息
     const sendMessage = async (text: string) => {
         if (!currentSession.value) {
             error.value = '没有活动会话'
