@@ -528,16 +528,16 @@ public class ChatService {
         StringBuilder prompt = new StringBuilder();
 
         prompt.append("用户刚刚回答了一个面试问题。请你作为面试官：\n\n");
-        prompt.append("1. 对用户的回答给出简短的反馈（1-2句话）\n");
+        prompt.append("对用户的回答给出简短的反馈（1-2句话）\n");
 
         if (standardAnswer != null) {
             prompt.append("参考标准答案：").append(standardAnswer + "\n\n");
         }
 
         prompt.append("用户的回答：").append(userAnswer).append("\n\n");
-        prompt.append("2. 然后提出下一个问题：\n");
+        prompt.append("然后提出下一个问题：\n");
         prompt.append(nextQuestion.getText()).append("\n\n");
-        prompt.append("请保持专业、鼓励的语气，直接与候选人对话。");
+        prompt.append("请保持专业,严格的语气，直接与候选人对话。不要以用户称呼对方，用你");
 
         return prompt.toString();
     }
@@ -546,26 +546,71 @@ public class ChatService {
      * 生成最终反馈
      */
     private String generateFinalFeedback(Long sessionId, String lastAnswer, Long lastQuestionId) {
-        StringBuilder prompt = new StringBuilder();
+        try {
+            StringBuilder prompt = new StringBuilder();
+            prompt.append("你是一位资深的技术面试官，现在需要对候选人的整体表现进行评价。\n\n");
 
-        prompt.append("用户刚刚完成了最后一个面试问题的回答。请你作为面试官：\n\n");
-        prompt.append("用户的最后回答：").append(lastAnswer).append("\n\n");
+            List<Message> allMessages = messageMapper.findBySessionId(sessionId);
 
-        // 添加标准答案参考
-        if (lastQuestionId != null) {
-            String standardAnswer = getStandardAnswerForQuestion(lastQuestionId);
-            if (standardAnswer != null && !standardAnswer.trim().isEmpty()) {
-                prompt.append("参考标准答案：").append(standardAnswer).append("\n\n");
-            }
+            List<Long> questionQueue = sessionService.getQuestionQueue(sessionId);
+
+            prompt.append("=== 完整面试记录 ===\n");
+            buildInterviewHistoryPrompt(prompt, allMessages, questionQueue);
+
+            prompt.append("\n=== 评价要求 ===\n");
+            prompt.append("请从以下维度对候选人进行综合评价：\n");
+            prompt.append("技术能力：对核心概念的理解程度\n");
+            prompt.append("表达能力：回答的逻辑性和清晰度\n");
+            prompt.append("知识深度：是否能深入分析问题\n");
+
+            prompt.append("请提供：\n");
+            prompt.append("整体表现总结（2-3句话）\n");
+            prompt.append("主要优点（列出2-3个具体表现）\n");
+            prompt.append("改进建议（针对性建议，2-3条）\n");
+            prompt.append("请保持专业、客观的语气，为候选人提供有价值的反馈。不要以候选人或者您或者用户称呼对方，用你");
+
+            return callOpenAI(prompt.toString());
+
+        } catch (Exception e) {
+            logger.error("生成最终反馈失败: sessionId={}", sessionId, e);
+            return "感谢您完成本次面试！由于系统暂时无法生成详细反馈，请稍后查看完整评价报告。";
         }
+    }
 
-        prompt.append("请提供：\n");
-        prompt.append("1. 对最后回答的简短反馈\n");
-        prompt.append("2. 对整个面试的总体评价\n");
-        prompt.append("3. 主要优点和改进建议\n\n");
-        prompt.append("请保持专业、客观、鼓励的语气。");
+    /**
+     * 构建面试历史提示词部分
+     * 复用已有方法，单一职责：只负责构建提示词
+     */
+    private void buildInterviewHistoryPrompt(StringBuilder prompt, List<Message> allMessages, List<Long> questionQueue) {
+        // 分离AI和用户消息
+        List<Message> aiMessages = allMessages.stream()
+                .filter(msg -> msg.getType() == MessageType.AI)
+                .collect(Collectors.toList());
 
-        return callOpenAI(prompt.toString());
+        List<Message> userMessages = allMessages.stream()
+                .filter(msg -> msg.getType() == MessageType.USER)
+                .collect(Collectors.toList());
+
+        // 按问题顺序构建历史
+        int questionCount = Math.min(questionQueue.size(), userMessages.size());
+
+        for (int i = 0; i < questionCount; i++) {
+            Long questionId = questionQueue.get(i);
+
+            // 复用现有方法获取问题文本
+            String questionText = getQuestionTextById(questionId);
+            String userAnswer = userMessages.get(i).getText();
+
+            prompt.append("【问题 ").append(i + 1).append("】").append(questionText).append("\n");
+            prompt.append("【候选人回答】").append(userAnswer).append("\n");
+
+            // 复用现有方法获取标准答案
+            String standardAnswer = getStandardAnswerForQuestion(questionId);
+            if (standardAnswer != null && !standardAnswer.trim().isEmpty()) {
+                prompt.append("【参考答案】").append(standardAnswer).append("\n");
+            }
+            prompt.append("\n");
+        }
     }
 
     /**
@@ -637,5 +682,17 @@ public class ChatService {
         Message message = new Message(sessionId, MessageType.USER, text);
         messageMapper.insert(message);
         return dtoConverter.convertToMessageDTO(message);
+    }
+
+    private String getQuestionTextById(Long questionId) {
+        try {
+            // 直接复用现有的questionMapper.findById方法
+            return questionMapper.findById(questionId)
+                    .map(Question::getText)
+                    .orElse("问题获取失败");
+        } catch (Exception e) {
+            logger.error("获取问题文本失败: questionId={}", questionId, e);
+            return "问题获取失败";
+        }
     }
 }
