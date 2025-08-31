@@ -537,7 +537,7 @@ public class ChatService {
         prompt.append("面试者的回答：").append(userAnswer).append("\n\n");
         prompt.append("然后提出下一个问题：\n");
         prompt.append(nextQuestion.getText()).append("\n\n");
-        prompt.append("如果面试者答得很差, 可以讲标准答案内容。永远用你称呼对方，别用用户");
+        prompt.append("如果面试者答得很差, 可以输出标准答案内容。永远用你称呼对方，别用用户");
         prompt.append("           你是一名资深的技术面试官，有10年+面试经验。你的特点：\n" +
                 "            \n" +
                 "            1. 直接犀利：不会给无关痛痒的鼓励，只关注技术能力\n" +
